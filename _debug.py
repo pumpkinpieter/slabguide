@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 plt.style.use('dark_background')
 
 # %%
-A = sg.SlabGuide(symmetric=True)
+A = sg.SlabGuide(xrefs=[60, 80, 60], Ts=[5, 2, 5])
 
 # %%
 half_width = .5
@@ -44,23 +44,18 @@ F0 = quadratic_piecewise2d
 P = sg.Propagator(A, f0, Lx, Rx)
 
 # %%
-contour1 = sg.real_contour(.001, 4*A.Z_evanescent, 80)
+contour1 = sg.real_contour(.0001, A.Z_evanescent, 100)
 P.add_contour(contour1)
 
 P.plot_transform(markersize=4)
 plt.show()
 
 # %%
-contour3 = sg.real_contour(A.Z_evanescent, 4*A.Z_evanescent, 80)
-P.add_contour(contour3)
+contour2 = sg.real_contour(A.Z_evanescent, 6*A.Z_evanescent, 300)
+P.add_contour(contour2)
 
-P.plot_transform(markersize=4)
+P.plot_transform(markersize=8)
 plt.show()
-
-# %%
-contour4 = sg.real_contour(-1, -.1, 80)
-P.add_contour(contour4)
-
 
 # %%
 
@@ -68,5 +63,11 @@ P.order_contours()
 
 # %%
 
-sg.plot_field_1d(A, P)
+sg.plot_field_1d(A, P, figsize=(25, 12), lw=3)
+sg.add_1d_plot(A, f0, lw=3)
+plt.show()
+
+# %%
+
+sg.plot_field_2d(A, P, figsize=(12, 20), zref=300, zmax=20, colorbar=False)
 plt.show()

@@ -9,6 +9,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
+def plot_points(Cs, m="o", ms=5, ax=None, **kwargs):
+    """Plot provided points in complex plane."""
+    try:
+        len(Cs)
+        Cs = np.asanyarray(Cs)
+    except TypeError:
+        Cs = np.asanyarray([Cs])
+    if ax is None:
+        ax = plt.gca()
+    for Z in Cs:
+        ax.plot(Z.real, Z.imag, marker=m, markersize=ms, **kwargs)
+
+
 def plot_refractive_index(
     Slab,
     figsize=(11, 4),

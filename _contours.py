@@ -1,4 +1,5 @@
 import numpy as np
+from ._sdp import sdp, sdp_derivative
 
 
 def real_contour(x_start, x_end, N, s_start=0, s_end=1):
@@ -112,7 +113,7 @@ def sdp_contour(Slab, x_start, x_end, N, s_start=0, s_end=1, sdp_sign=-1,
         N += 1
     Ss = np.linspace(s_start, s_end, N)
     xs = x_start + (x_end - x_start) * (Ss - s_start) / (s_end - s_start)
-    Cs = Slab.sdp(xs, sdp_sign=sdp_sign, plane=plane)
+    Cs = sdp(Slab, xs, sdp_sign=sdp_sign, plane=plane)
 
     dxds = (x_end - x_start) / (s_end - s_start) * np.ones(N)
     dCdS = dxds * Slab.sdp_derivative(xs, sdp_sign=sdp_sign, plane=plane)
@@ -136,7 +137,7 @@ def vertical_contour(x, y_start, y_end, N, s_start=0, s_end=1):
 
 
 def vertical_contour_to_sdp(Slab, x, N, sdp_sign=-1):
-    y_start, y_end = 0, Slab.sdp(x, sdp_sign=sdp_sign, plane="Z").imag
+    y_start, y_end = 0, sdp(Slab, x, sdp_sign=sdp_sign, plane="Z").imag
     return vertical_contour(x, y_start, y_end, N)
 
 

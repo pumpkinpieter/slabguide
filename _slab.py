@@ -12,7 +12,6 @@ import numpy as np
 from ._normalizers import OurMethod
 from copy import deepcopy
 from warnings import warn
-from scipy import integrate
 from scipy.optimize import newton
 
 
@@ -59,21 +58,25 @@ class SlabGuide:
         Shift : float, optional
             Non-dimensioal shift for translating computational domain away from
             origin. The default is 0.
-        symmetric : bool, optional
-            Whether or not the waveguide is symmetric. If True the domain is
-            centered at the origin.  The default is False.
+        center : bool, optional
+            Centers the geometry at the origin. The default is True.
         """
         self.no_xs = no_xs
 
         # Check inputs for errors
         self.check_parameters(Ts, ns, xrefs)
 
+        # Variables beginning with upper case are non-dimensional
         self.Shift = Shift
+
+        # Variables beginning with lower case are dimensional
         self.scale = scale
         self.shift = Shift * scale
 
         self.Ts = np.array(Ts, dtype=float)
         self.ts = self.Ts * self.scale
+
+        # Material interface coordinates (non-dimensional)
         self.Rhos = np.array([sum(self.Ts[:i]) for i in range(len(self.Ts)
                                                               + 1)])
         if xrefs is None:
@@ -81,12 +84,15 @@ class SlabGuide:
 
         self.xrefs = xrefs
 
+        # Center geometry at y=0.
         if center:
             self.Shift = 1 / 2 * self.Rhos[-1]
 
+        # Translate geometry by Shift value
         self.Rhos -= self.Shift
         self.rhos = self.Rhos * self.scale
 
+        # Create x values for plotting
         if not self.no_xs:
             self.Xs = [
                 np.linspace(self.Rhos[i], self.Rhos[i + 1], self.xrefs[i])
@@ -97,9 +103,16 @@ class SlabGuide:
             )
             self.all_Xs = np.append(self.all_Xs, self.Xs[-1][-1])
 
-        self.ns_in = deepcopy(ns)  # Copy input refractive index information
+        # Copy input refractive index information. Necessary since self.ns will
+        # vary from input ns depending on wavelength (see below).
+        self.ns_in = deepcopy(ns)
 
-        self.wl = wl  # Property that also sets refractive indices
+        # Set wavelength. Note that this is a property that also sets
+        # refractive indices (self.ns)
+        self.wl = wl
+
+        # Check if guide is symmetric (not yet utilized but plan to use this to
+        # reduce computational load in calculating transmission matrix)
         self.is_symmetric = self.check_symmetric()
 
     def __name__():
@@ -117,8 +130,7 @@ class SlabGuide:
         self._wl = wl
         N = len(self.ns_in)
 
-        # Below allows for callable wavelength functions for implementing
-        # dispersion, either via Sellmeier or opticalmaterials.py
+        # Allow for callable wavelength functions (i.e. for dispersion)
         self.ns = np.array(
             [
                 self.ns_in[i](wl) if callable(self.ns_in[i]) else self.ns_in[i]
@@ -126,13 +138,18 @@ class SlabGuide:
             ]
         )
 
+        # Set wavenumber
         self.k0 = 2 * np.pi / wl
         self.K0 = self.k0 * self.scale
 
-        self.n0 = np.max(self.ns[[0, -1]])  # n for integral expansion
+        # Set refractive index used in integral expansion.  This is currently
+        # the shared value of the outer refractive indices
+        self.n0 = np.max(self.ns[[0, -1]])
         self.n_low = np.min(self.ns)
         self.n_high = np.max(self.ns)
 
+        # Set regional wavenumbers (used to bound guided propagation constants
+        # in Beta plane)
         self.ks = self.k0 * self.ns
         self.Ks = self.K0 * self.ns
         self.K_low, self.K_high = np.min(self.Ks), np.max(self.Ks)
@@ -143,10 +160,11 @@ class SlabGuide:
         # Z value where radiation modes shift from propagating to evanescent
         self.Z_evanescent = self.Zi_from_Beta(0).real
 
-        # Z value before which we have one-sided radiation modes.
-        self.Z_one_sided = self.K0 * np.sqrt(
-            np.max(self.ns[[0, -1]]) ** 2 - np.min(self.ns[[0, -1]]) ** 2
-        )
+        # Z value before which we have one-sided radiation modes (not currently
+        # implemented).
+        # self.Z_one_sided = self.K0 * np.sqrt(
+        #     np.max(self.ns[[0, -1]]) ** 2 - np.min(self.ns[[0, -1]]) ** 2
+        # )
 
         # Max pure imaginary value for guided modes in Z plane
         self.Z_max_guided = self.Zi_from_Beta(self.K_high)
@@ -204,6 +222,16 @@ Combining layers to avoid singular behavior in transfer matrices.")
 try again.")
 
     def check_symmetric(self,):
+        '''
+        Determine if guide is symmetric.
+
+        Will be used to improve computation, but this is not yet implemented.
+
+        Returns
+        -------
+        bool
+            True if guide is symmetric, else False.
+        '''
         b1 = np.all(np.flip(self.ns) == self.ns)
         b2 = np.all(np.flip(self.Ts) == self.Ts)
         if b1 and b2:
@@ -211,12 +239,30 @@ try again.")
         return False
 
     def condition_list(self, xs):
-        """Return condition list for piecewise function definitions."""
+        '''
+        Generate condition list for piecewise function definitions.
+
+        Parameters
+        ----------
+        xs : list or array
+            Independent variables.
+
+        Returns
+        -------
+        list of boolean arrays
+            Entry 'i' of list has index 'j' equal to true if xs[j] is between
+            self.Rhos[i] and self.Rhos[i+1].
+        '''
+        # Give xs at least one dimension and ensure it's an array
         try:
             len(xs)
             xs = np.array(xs)
         except TypeError:
             xs = np.array([xs])
+
+        # If one region, no restrictions wanted
+        if len(self.ns) == 1:
+            return [(-np.inf <= xs) * (xs <= np.inf)]
 
         # Set up piecewise condition list
         conds = [
@@ -228,8 +274,6 @@ try again.")
         conds[0] = xs < self.Rhos[1]
         conds[-1] = self.Rhos[-2] <= xs
 
-        if len(self.ns) == 1:  # Only one entry, no restrictions wanted
-            conds[0] = (-np.inf <= xs) * (xs <= np.inf)
         return conds
 
     def Beta_from_Zi(self, Z, ni=None):
@@ -290,6 +334,40 @@ try again.")
 
     # ------------ Matrices and Determinant (Eigenvalue) Functions -----------------
 
+    def state_matrix(
+        self,
+        Z0,
+        x,
+        region_idx,
+        field_type='TE',
+        Z_type='standard',
+    ):
+        if field_type not in ["TE", "TM"]:
+            raise ValueError("Must have field_type either TE or TM.")
+
+        try:
+            len(C)
+            C = np.array(C, dtype=complex)
+        except TypeError:
+            C = np.array([C], dtype=complex)
+
+        n = self.ns[region_idx]
+        Z = self.Zi_from_Z0(Z0, n)
+
+        S = np.zeros(C.shape + (2, 2), dtype=np.complex128)
+
+        S[..., 0, 0] = np.exp(1j * Z * x)
+        S[..., 0, 1] = np.exp(-1j * Z * x)
+
+        S[..., 1, 0] = 1j * Z / self.K0 * np.exp(1j * Z * x)
+        S[..., 1, 1] = -1j * Z / self.K0 * np.exp(-1j * Z * x)
+
+        if field_type == "TM":
+            S[..., 1, 0] /= n**2
+            S[..., 1, 1] /= n**2
+
+        return S
+
     def transfer_matrix(
         self,
         C,
@@ -302,13 +380,48 @@ try again.")
         plane="Z",
         derivate=False,
     ):
-        """Matrix giving coefficients of field in next layer from previous.
+        '''
+        Matrix giving coefficients of field in next layer from previous.
 
+        Parameters
+        ----------
+        C : TYPE
+            DESCRIPTION.
+        Rho : TYPE
+            DESCRIPTION.
+        n_left : TYPE
+            DESCRIPTION.
+        n_right : TYPE
+            DESCRIPTION.
+        field_type : TYPE, optional
+            DESCRIPTION. The default is "TE".
+        Ztype_left : TYPE, optional
+            DESCRIPTION. The default is "standard".
+        Ztype_right : TYPE, optional
+            DESCRIPTION. The default is "standard".
+        plane : TYPE, optional
+            DESCRIPTION. The default is "Z".
+        derivate : TYPE, optional
+            DESCRIPTION. The default is False.
+
+        Returns
+        -------
+        TYPE
+            DESCRIPTION.
+
+        Raises
+        ------
+        ValueError
+            DESCRIPTION.
+
+        Notes
+        -----
         Takes non-dimensional complex inputs (C) and forms Z_left and Z_right
         from them.  This allows one to choose between equivalent forms for
         Z which satisfy Z^2 = K^2 - C^2, which can move branch cuts in the
         eigenvalue function and help visualize things in the complex Beta
-        plane."""
+        plane.
+        '''
 
         if field_type not in ["TE", "TM"]:
             raise ValueError("Must have field_type either TE or TM.")
@@ -418,7 +531,35 @@ try again.")
         plane="Z",
         derivate=False,
     ):
-        """Total product of transfer matrices."""
+        '''
+        Matrix giving transverse field coefficients on outer right region of
+        device from those on outer left region.
+
+        Calculated by forming product of transfer matrices from each material
+        interface. 
+
+        Parameters
+        ----------
+        C : TYPE
+            DESCRIPTION.
+        field_type : TYPE, optional
+            DESCRIPTION. The default is "TE".
+        Ztype_far_left : TYPE, optional
+            DESCRIPTION. The default is "imag".
+        Ztype_far_right : TYPE, optional
+            DESCRIPTION. The default is "imag".
+        up_to_region : TYPE, optional
+            DESCRIPTION. The default is -1.
+        plane : TYPE, optional
+            DESCRIPTION. The default is "Z".
+        derivate : TYPE, optional
+            DESCRIPTION. The default is False.
+
+        Returns
+        -------
+        TYPE
+            DESCRIPTION.
+        '''
 
         try:
             len(C)
@@ -452,17 +593,10 @@ try again.")
                     L, R = "standard", "standard"
 
                 T = (
-                    self.transfer_matrix(
-                        C,
-                        rho,
-                        nl,
-                        nr,
-                        field_type=field_type,
-                        Ztype_left=L,
-                        Ztype_right=R,
-                        plane=plane,
-                    )
-                    @ T
+                    self.transfer_matrix(C, rho, nl, nr, field_type=field_type,
+                                         Ztype_left=L, Ztype_right=R,
+                                         plane=plane,
+                                         ) @ T
                 )
             return T
         else:
@@ -489,21 +623,21 @@ try again.")
                         L, R = "standard", "standard"
 
                     T = (
-                        self.transfer_matrix(
-                            C,
-                            rho,
-                            nl,
-                            nr,
-                            field_type=field_type,
-                            Ztype_left=L,
-                            Ztype_right=R,
-                            plane=plane,
-                            derivate=derivate,
-                        )
-                        @ T
+                        self.transfer_matrix(C, rho, nl, nr,
+                                             field_type=field_type,
+                                             Ztype_left=L, Ztype_right=R,
+                                             plane=plane, derivate=derivate,
+                                             ) @ T
                     )
                 S += T
             return S
+
+    def matching_matrix(
+        self,
+        Z,
+        field_type="TE",
+    ):
+        pass
 
     def eigenvalues(
         self,
@@ -515,7 +649,36 @@ try again.")
         sign=1,
         derivate=False,
     ):
-        """Eigenvalue function."""
+        '''
+        Function whose zeros correspond to the propagation constants
+        for discrete modes of the waveguide (both leaky and guided).
+
+        Parameters
+        ----------
+        C : TYPE
+            DESCRIPTION.
+        plane : TYPE, optional
+            DESCRIPTION. The default is "Z".
+        mode_type : TYPE, optional
+            DESCRIPTION. The default is "guided".
+        field_type : TYPE, optional
+            DESCRIPTION. The default is "TE".
+        Normalizer : TYPE, optional
+            DESCRIPTION. The default is None.
+        sign : TYPE, optional
+            DESCRIPTION. The default is 1.
+        derivate : TYPE, optional
+            DESCRIPTION. The default is False.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ValueError
+            DESCRIPTION.
+        '''
 
         if field_type not in ["TE", "TM"]:
             raise ValueError("Must have field_type either TE or TM.")
@@ -547,7 +710,11 @@ try again.")
             )
 
     def transmission_determinant(
-        self, C, field_type="TE", up_to_region=-1, plane="Z"
+        self,
+        C,
+        field_type="TE",
+        up_to_region=-1,
+        plane="Z",
     ):
         """Determinant of transmission matrix."""
         try:
@@ -983,58 +1150,5 @@ arrays for xs and zs to levarage product nature of fields.")
                                    field_type=field_type)
         self.guided_mode_regional_coefficients = Coeffs
         self.guided_modes = [self.fields(Z, rounding=rounding) for Z in Zs]
-
-    def get_guided_field(self, f0, Lx, Rx, Nref=3000,
-                         field_type='TE', **intargs):
-        """
-        Get guided field of guided induced by input function f0.
-
-        Parameters
-        ----------
-        f0 : callable
-            Input field.
-        Lx : float
-            Left endpoint of support of f0.
-        Rx : float
-            Right endpoint of support of f0.
-        Nref : int, optional
-            Number of points in interval for guided mode findig. The default is
-            3000.
-
-        Returns
-        -------
-        callable
-            Guided field induced in guide by f0.
-        array
-            Coefficients of guided field (integral of f0 against each guided
-            mode).
-        """
-        try:
-            Zs = self.guided_mode_propagation_constants
-        except AttributeError:
-            self.get_guided_modes(Nref, field_type=field_type)
-            Zs = self.guided_mode_propagation_constants
-
-        def integrand(x, C):
-            return f0(x) * self.fields_vec(
-                C,
-                x,
-                mode_type="guided",
-                field_type=field_type,
-                Coeffs=self.guided_mode_regional_coefficients
-            )
-
-        coeffs = integrate.quad_vec(
-            integrand, Lx, Rx, args=(Zs,), **intargs
-        )[0]
-
-        Fs = self.guided_modes
-        # coeffs = [integrate.quad(lambda x: f0(x) * F(x),
-        #                          Lx, Rx, complex_func=True)[0] for F in Fs]
-
-        def field(x, z): return sum([c * F(x, z)
-                                     for (c, F) in zip(coeffs, Fs)])
-        return field, np.array(coeffs)
-
 
 # A = SlabGuide(ns=[1, 1, 2, 2, 2, 1], Ts=[4, 2, 3, 3, 4, 1])

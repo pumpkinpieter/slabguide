@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import quad_vec
+# from warnings import warn
 from ._normalizers import OurMethod
 from ._contours import real_contour
 
@@ -19,6 +20,7 @@ class Propagator:
         plane="Z",
         compute_class_I=True,
         compute_class_II=True,
+        # split_prop_ev=True,
         **integration_args,
     ):
 
@@ -87,6 +89,17 @@ f0.")
         # Initiate list of complex contours owned by this propagator
         self.contours = []
 
+        # Check for complex refractive indices and warn re splitting up
+        # propagating and evanescent parts of the radiation field.
+#         self.split_prop_ev = split_prop_ev
+#         if self.Slab.ns[0].imag and split_prop_ev:
+#             warn("Outer refractive index complex but split_prop_ev set to \
+# True; radiation field cannot strictly be separated in this way for complex \
+# n0. Proceeding as normal but user should be aware.")
+
+        # Get guided field
+        self.get_guided_field(f0, Lx, Rx)
+
     def verify_contour(self, contour):
         if (len(set([len(contour['Cs']),
                      len(contour['Ss']),
@@ -147,7 +160,7 @@ f0.")
         # Split up contour into new dictionaries
         Ds = [{} for i in range(len(split_indices)+1)]
         for key, val in contour.items():
-            if key == 'contour_type':
+            if key == 'contour_type' or key == 'radiation_type':
                 for D in Ds:
                     D[key] = contour[key]
                 continue
@@ -164,7 +177,7 @@ f0.")
             if l in remove_indices:
                 l -= 1  # adjust (local) index to account for removals
                 continue
-            # Add new contours to start of list (thus avoiding indexing shift)
+            # Add new contours to end of list (avoiding indexing shift)
             self.contours.append(D)
 
         return index_shift
@@ -245,11 +258,23 @@ f0.")
                 split_indices = np.where((old_Cs <= R_new) *
                                          (old_Cs >= L_new))[0][[0, -1]]
 
+                # Adjust indices if overlap aligns exactly with an element
+                # in old contour
+                if L_new in old_Cs:
+                    split_indices[0] += 1
+
+                if R_new in old_Cs:
+                    split_indices[-1] -= 1
+
                 split_indices[-1] += 1  # accounts for np.split behavior
 
                 # Adjust indices to ensure remaining arrays have odd numbers
                 # of points, either 0 or 3 and above (for Simpson's rule).
                 L, R = split_indices[:]
+
+                # Note calculations for L below are all one higher than would
+                # be expected based on zero indexing. This is due to the
+                # behavior of np.split
                 if L <= 2:
                     L = 0
                 elif L % 2 == 0:
@@ -267,11 +292,11 @@ f0.")
                 index_shift += new_shift
 
                 # Add bridging contours if necessary
-                if L > 0:
+                if L > 0 and old_Cs[L-1] < L_new:
                     bridge_contour = real_contour(old_Cs[L-1], L_new, 3)
                     self.add_contour(bridge_contour, check_overlap=True)
                     # index_shift += 1
-                if len(old_Cs) > R:
+                if len(old_Cs) > R and R_new < old_Cs[R]:
                     bridge_contour = real_contour(R_new, old_Cs[R], 3)
                     self.add_contour(bridge_contour, check_overlap=True)
                     # index_shift += 1
@@ -297,6 +322,7 @@ f0.")
         -------
         None
         '''
+
         # Verify data in contour
         self.verify_contour(contour)
 
@@ -360,6 +386,58 @@ f0.")
         # Append contour to end of list
         self.contours.append(contour)
 
+        # Split contours that span self.Slab.Z_evanescent
+        self.separate_prop_ev()
+
+        # Mark radiation type
+        self.mark_prop_ev()
+
+        self.N_contours = len(self.contours)
+
+    def separate_prop_ev(self,):
+        '''
+        Split any contours spanning propagating and evanescent regions into
+        separate parts.
+        '''
+        for contour in self.contours:
+
+            if contour['contour_type'] == 'real':
+                Cs = contour['Cs']
+                Z_ev = self.Slab.Z_evanescent
+
+                if ((Cs[0] < Z_ev) * (Cs[-1] > Z_ev)):
+
+                    # Find leftmost index under Z_evanescent and adjust for
+                    # Simpson's rule
+                    L = np.where(Cs < Z_ev)[0][-1]
+                    if L <= 2:
+                        L = 0
+                    elif L % 2 == 0:
+                        L -= 1
+                    L_C = Cs[L-1]
+
+                    # Create contour going from that point to Z_evanescent
+                    # (again conforming to Simpson's rule).
+                    splitting_contour = real_contour(L_C, Z_ev, 3)
+
+                    # Add the contour.  This will split the spanning contour
+                    # and create the appropriate right bridge (once debugged).
+                    self.add_contour(splitting_contour)
+
+    def mark_prop_ev(self,):
+        '''
+        Mark real contours as propagating or evanescent.
+        '''
+        for contour in self.contours:
+            if contour["contour_type"] == 'real':
+
+                if np.all(contour['Cs'] <= self.Slab.Z_evanescent):
+                    contour['radiation_type'] = 'propagating'
+                else:
+                    contour['radiation_type'] = 'evanescent'
+            else:
+                contour['radiation_type'] = 'mixed'
+
     def radiation_transform(
         self,
         Cs,
@@ -388,7 +466,15 @@ f0.")
             integrand, self.Lx, self.Rx, args=(Cs, sign, Coeffs), **intargs
         )[0]
 
-    def quadrature(self, xs, zs, alphas, Fs, contour, method='simpson'):
+    def quadrature(
+        self,
+        xs,
+        zs,
+        alphas,
+        Fs,
+        contour,
+        method='simpson'
+    ):
 
         Cs, dCdS, Ss = contour['Cs'], contour['dCdS'], contour['Ss']
         dS = Ss[1:] - Ss[:-1]
@@ -459,7 +545,8 @@ spaced spaced intervals.")
 
         return ys
 
-    def __call__(self, xs, zs=np.array([0]), method="simpsons"):
+    def __call__(self, xs, zs=np.array([0]), method="simpsons",
+                 portion='full'):
         """
         Propagate radiation field of input function self.f0 (or exact
         transform).
@@ -481,7 +568,23 @@ spaced spaced intervals.")
         """
         result = 0
 
-        for contour in self.contours:
+        if portion == 'radiation' or portion == 'full':
+            contours = self.contours
+        elif portion == 'propagating':
+            contours = []
+            for c in self.contours:
+                if c['radiation_type'] == 'propagating':
+                    contours.append(c)
+        elif portion == 'evanescent':
+            contours = []
+            for c in self.contours:
+                if c['radiation_type'] == 'evanescent':
+                    contours.append(c)
+        else:
+            raise ValueError("Portion must be 'full', 'radiation', \
+'propagating' or 'evanescent'.")
+
+        for contour in contours:
 
             if self.compute_class_I:
                 alphas, Fs = contour['alphas_I'], contour['fields_I']
@@ -495,7 +598,74 @@ spaced spaced intervals.")
                                      method=method)
                 result += ys
 
+        if portion == 'full':
+            result += self.Guided(xs, zs)
         return result
+
+    def Propagating(self, xs, zs=np.array([0]), method="simpsons"):
+        return self(xs, zs=zs, method="simpsons",
+                    portion='propagating')
+
+    def Evanescent(self, xs, zs=np.array([0]), method="simpsons"):
+        return self(xs, zs=zs, method="simpsons",
+                    portion='evanescent')
+
+    def Radiation(self, xs, zs=np.array([0]), method="simpsons"):
+        return self(xs, zs=zs, method="simpsons",
+                    portion='radiation')
+
+    def get_guided_field(self, f0, Lx, Rx, Nref=3000, field_type='TE',
+                         return_coeffs=False, **intargs):
+        """
+        Get guided field of guided induced by input function f0.
+
+        Parameters
+        ----------
+        f0 : callable
+            Input field.
+        Lx : float
+            Left endpoint of support of f0.
+        Rx : float
+            Right endpoint of support of f0.
+        Nref : int, optional
+            Number of points in interval for guided mode findig. The default is
+            3000.
+
+        Returns
+        -------
+        callable
+            Guided field induced in guide by f0.
+        array
+            Coefficients of guided field (integral of f0 against each guided
+            mode).
+        """
+        try:
+            Zs = self.Slab.guided_mode_propagation_constants
+        except AttributeError:
+            self.Slab.get_guided_modes(Nref, field_type=field_type)
+            Zs = self.Slab.guided_mode_propagation_constants
+
+        def integrand(x, C):
+            return f0(x) * self.Slab.fields_vec(
+                C,
+                x,
+                mode_type="guided",
+                field_type=field_type,
+                Coeffs=self.Slab.guided_mode_regional_coefficients
+            )
+
+        coeffs = quad_vec(
+            integrand, Lx, Rx, args=(Zs,), **intargs
+        )[0]
+
+        Fs = self.Slab.guided_modes
+
+        def field(x, z): return sum([c * F(x, z)
+                                     for (c, F) in zip(coeffs, Fs)])
+        self.Guided = field
+
+        if return_coeffs:
+            return np.array(coeffs)
 
     def plot_transform(
         self,
