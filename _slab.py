@@ -336,14 +336,17 @@ try again.")
 
     def state_matrix(
         self,
-        Z0,
+        C,
         x,
         region_idx,
         field_type='TE',
-        Z_type='standard',
+        plane='Z',
+        Ztype='standard',
     ):
         if field_type not in ["TE", "TM"]:
             raise ValueError("Must have field_type either TE or TM.")
+        if plane not in ["Z", "Beta", "Psi"]:
+            raise ValueError("Plane must be 'Beta', 'Z' or 'Psi'.")
 
         try:
             len(C)
@@ -352,7 +355,27 @@ try again.")
             C = np.array([C], dtype=complex)
 
         n = self.ns[region_idx]
-        Z = self.Zi_from_Z0(Z0, n)
+
+        if plane == "Beta":
+            Beta = C
+            if Ztype == "standard":
+                Z = np.sqrt(
+                    self.K0**2 * n**2 - Beta**2, dtype=complex
+                )
+            elif Ztype == "imag":
+                Z = 1j * np.sqrt(
+                    Beta**2 - self.K0**2 * n**2, dtype=complex
+                )
+            else:
+                raise ValueError("Ztype must be standard or imag.")
+
+        elif plane == "Z":
+            Z = self.Zi_from_Z0(C, n)
+
+        else:
+            Psi0 = C
+            Psi = self.Psi_i_from_Psi0(Psi0, n)
+            Z = self.K0 * n * np.sin(Psi)
 
         S = np.zeros(C.shape + (2, 2), dtype=np.complex128)
 
@@ -371,9 +394,7 @@ try again.")
     def transfer_matrix(
         self,
         C,
-        Rho,
-        n_left,
-        n_right,
+        interface_idx,
         field_type="TE",
         Ztype_left="standard",
         Ztype_right="standard",
@@ -385,8 +406,10 @@ try again.")
 
         Parameters
         ----------
-        C : TYPE
-            DESCRIPTION.
+        C : complex
+            Complex number input.  Keyword argument 'plane' determines whether
+            this number represents transverse propagation constant 'Z0', 
+            longitudinal propagation constant 'Beta' or radiation angle 'Psi0'.
         Rho : TYPE
             DESCRIPTION.
         n_left : TYPE
@@ -439,6 +462,9 @@ try again.")
             C = np.array([C], dtype=complex)
 
         # derivative_scaling = 1
+
+        n_left, n_right = self.ns[interface_idx-1], self.ns[interface_idx]
+        Rho = self.Rhos[interface_idx]
 
         if plane == "Beta":
             Beta = C
@@ -571,7 +597,6 @@ try again.")
         T[..., :, :] = np.eye(2, dtype=complex)
 
         Rhos = self.Rhos
-        ns = self.ns
 
         if up_to_region >= 0:
             up_to_region = up_to_region - len(Rhos) + 1
@@ -580,8 +605,6 @@ try again.")
 
         if not derivate:
             for i in enum:
-                nl, nr = ns[i - 1], ns[i]
-                rho = Rhos[i]
 
                 if i == 1:
                     L, R = Ztype_far_left, "standard"
@@ -593,7 +616,7 @@ try again.")
                     L, R = "standard", "standard"
 
                 T = (
-                    self.transfer_matrix(C, rho, nl, nr, field_type=field_type,
+                    self.transfer_matrix(C, i, field_type=field_type,
                                          Ztype_left=L, Ztype_right=R,
                                          plane=plane,
                                          ) @ T
@@ -610,8 +633,6 @@ try again.")
                         derivate = True
                     else:
                         derivate = False
-                    nl, nr = ns[j - 1], ns[j]
-                    rho = Rhos[j]
 
                     if j == 1:
                         L, R = Ztype_far_left, "standard"
@@ -623,7 +644,7 @@ try again.")
                         L, R = "standard", "standard"
 
                     T = (
-                        self.transfer_matrix(C, rho, nl, nr,
+                        self.transfer_matrix(C, i,
                                              field_type=field_type,
                                              Ztype_left=L, Ztype_right=R,
                                              plane=plane, derivate=derivate,
@@ -636,8 +657,21 @@ try again.")
         self,
         Z,
         field_type="TE",
+        Ztype='standard',
     ):
-        pass
+        d = len(self.Rhos)-2
+        M = np.eye(2 * (d+1), dtype=complex)
+        for i in range(1, d+1):
+            Rho_i = self.Rhos[i]
+            S_L = self.state_matrix(Z, Rho_i, i-1, field_type=field_type,
+                                    Ztype=Ztype)[0]
+            S_R = self.state_matrix(Z, Rho_i, i, field_type=field_type,
+                                    Ztype=Ztype)[0]
+            j = 1 + 2 * (i-1)
+            M[j: j+2, j-1: j+1] = S_L[:]
+            M[j: j+2, j+1: j+3] = S_R[:]
+
+        return M
 
     def eigenvalues(
         self,
@@ -854,7 +888,7 @@ try again.")
         if manual_coeffs is not None:
             M0[..., :, 0] = manual_coeffs
 
-        Rhos, ns = self.Rhos, self.ns
+        Rhos = self.Rhos
 
         if up_to_region >= 0:
             up_to_region = up_to_region - len(Rhos) + 1
@@ -870,13 +904,9 @@ try again.")
         Ztypes[0], Ztypes[-1] = Ztype_far_left, Ztype_far_right
 
         for i in range(1, len(Rhos) + up_to_region):
-            nl, nr = ns[i - 1], ns[i]
-            Rho = Rhos[i]
             T = self.transfer_matrix(
                 C,
-                Rho,
-                nl,
-                nr,
+                i,
                 field_type=field_type,
                 Ztype_left=Ztypes[i - 1],
                 Ztype_right=Ztypes[i],
@@ -973,6 +1003,7 @@ for xs and zs to levarage product nature of fields.")
         rounding=12,
         plane="Z",
         manual_coeffs=None,
+        user_coeffs=None,
     ):
         """Return fields at propagation constant given by 'C' in plane
         determined by 'plane'. Vectorized in x,and z but not in C."""
@@ -987,16 +1018,19 @@ for xs and zs to levarage product nature of fields.")
         if plane not in ["Z", "Beta", "Psi"]:
             raise ValueError("Plane must be 'Beta', 'Z' or 'Psi'.")
 
-        M = self.coefficients(
-            C,
-            Normalizer=Normalizer,
-            mode_type=mode_type,
-            field_type=field_type,
-            sign=sign,
-            rounding=rounding,
-            plane=plane,
-            manual_coeffs=manual_coeffs,
-        ).T
+        if user_coeffs is not None:
+            M = user_coeffs
+        else:
+            M = self.coefficients(
+                C,
+                Normalizer=Normalizer,
+                mode_type=mode_type,
+                field_type=field_type,
+                sign=sign,
+                rounding=rounding,
+                plane=plane,
+                manual_coeffs=manual_coeffs,
+            ).T
 
         Ztypes = ["standard" for i in range(len(self.Rhos) - 1)]
 
@@ -1122,6 +1156,27 @@ arrays for xs and zs to levarage product nature of fields.")
             Number of points in interval for guided mode search. The default is
             3000.
         """
+        if not hasattr(self, 'guided_mode_propagation_constants'):
+            self.get_guided_propagation_constants(Nref=Nref,
+                                                  field_type=field_type)
+        Zs = self.guided_mode_propagation_constants
+        Coeffs = self.coefficients(Zs,
+                                   mode_type='guided',
+                                   field_type=field_type)
+        self.guided_mode_regional_coefficients = Coeffs
+        self.guided_modes = [self.fields(Z, rounding=rounding) for Z in Zs]
+
+    def get_guided_propagation_constants(self, Nref=3000, rounding=8,
+                                         field_type='TE'):
+        """
+        Calculate the structure's guided mode propagation constants.
+
+        Parameters
+        ----------
+        Nref : int, optional
+            Number of points in interval for guided mode search. The default is
+            3000.
+        """
 
         def F(x): return -np.log(np.abs(self.eigenvalues(x*1j))**2)
 
@@ -1145,10 +1200,6 @@ arrays for xs and zs to levarage product nature of fields.")
         Zs = np.flip(Zs)  # Invert order so fundamental comes first
 
         self.guided_mode_propagation_constants = Zs
-        Coeffs = self.coefficients(Zs,
-                                   mode_type='guided',
-                                   field_type=field_type)
-        self.guided_mode_regional_coefficients = Coeffs
-        self.guided_modes = [self.fields(Z, rounding=rounding) for Z in Zs]
 
-# A = SlabGuide(ns=[1, 1, 2, 2, 2, 1], Ts=[4, 2, 3, 3, 4, 1])
+
+A = SlabGuide()
