@@ -1,12 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from ipywidgets import interactive, FloatSlider, Layout
+from copy import deepcopy
+from ..sdp import sdp
 
 # --------------------------- Interactive Plots  -------------------------------
 
 
-def interactive_determinant_plot(
-    slab,
+def interactive_eigenvalue_plot(
+    Slab,
     rmin,
     rmax,
     imin,
@@ -20,6 +22,7 @@ def interactive_determinant_plot(
     field_type="TE",
     mode_type="guided",
     plot_sdp=False,
+    plot_Z_hyperbolic=False,
     sdp_sign=-1,
     plane="Z",
     grid=True,
@@ -30,6 +33,7 @@ def interactive_determinant_plot(
     **args,
 ):
     plt.close("all")
+    original_wl = deepcopy(Slab.wl)
     fig, ax = plt.subplots(1, figsize=figsize)
 
     xs, ys = np.linspace(rmin, rmax, rref), np.linspace(imin, imax, iref)
@@ -37,11 +41,11 @@ def interactive_determinant_plot(
     Xs, Ys = np.meshgrid(xs, ys)
     Cs = Xs + 1j * Ys
 
-    def det_plot(wl, plot_sdp=plot_sdp):
-        slab.wl = wl
+    def eig_plot(wl, plot_sdp=plot_sdp, plot_Z_hyperbolic=plot_Z_hyperbolic):
+        Slab.wl = wl
         ax.clear()
 
-        fs = slab.determinant(
+        fs = Slab.eigenvalues(
             Cs, field_type=field_type, mode_type=mode_type, plane=plane
         )
         Vals = np.log(np.abs(fs))
@@ -49,21 +53,23 @@ def interactive_determinant_plot(
 
         if plot_sdp:
             if plane == "Z":
-                sdp_vals = slab.sdp(xs, sdp_sign=sdp_sign, plane=plane)
+                sdp_vals = sdp(Slab, xs, sdp_sign=sdp_sign, plane=plane)
                 sdp_ys = sdp_vals.imag
                 msk = np.where((sdp_ys < imax) * (sdp_ys > imin))
                 ax.plot(xs[msk], sdp_ys[msk], **args)
             elif plane == "Beta":
-                sdp_vals = slab.sdp(ys, sdp_sign=sdp_sign, plane=plane)
+                sdp_vals = sdp(Slab, ys, sdp_sign=sdp_sign, plane=plane)
                 ax.plot(sdp_vals.real, sdp_vals.imag, **args)
             elif plane == "Psi":
-                sdp_points = slab.sdp(ys, sdp_sign=sdp_sign, plane=plane)
+                sdp_points = sdp(Slab, ys, sdp_sign=sdp_sign, plane=plane)
                 sdp_xs, sdp_ys = sdp_points.real, sdp_points.imag
                 msk = np.where((sdp_xs < rmax) * (sdp_xs > rmin))
                 ax.plot(sdp_xs[msk], sdp_ys[msk])
             else:
                 raise ValueError("Plane must be 'Z', 'Beta' or 'Psi'.")
 
+        if plot_Z_hyperbolic:
+            ax.axvline(Slab.Z_hyperbolic, ls='--', lw=1.25, c='k')
         ax.grid(grid)
         ax.set_facecolor(facecolor)
         if plot_axis:
@@ -74,11 +80,12 @@ def interactive_determinant_plot(
 Current wavelength: %.6e\n" % (wl),
             fontsize=12,
         )
+        Slab.wl = original_wl
 
     step = (maxwl - minwl) / Nwl
 
     interactive_plot = interactive(
-        det_plot,
+        eig_plot,
         wl=FloatSlider(
             min=minwl,
             max=maxwl,
@@ -94,7 +101,7 @@ Current wavelength: %.6e\n" % (wl),
 
 
 def interactive_spectral_integrand_1d(
-    slab,
+    Slab,
     contour,
     f0=None,
     Lx=None,
@@ -128,7 +135,7 @@ def interactive_spectral_integrand_1d(
 
     if contour_type in ["real", "horizontal", "sdp"]:
         xs = Cs.real
-        if max(xs) < slab.Z_evanescent.real:
+        if max(xs) < Slab.Z_evanescent.real:
             plot_Z_evanescent = False
     elif contour_type in ["imaginary", "vertical"]:
         plot_Z_evanescent = False
@@ -138,9 +145,9 @@ def interactive_spectral_integrand_1d(
         xs = contour["Ss"]
 
     if min_x is None:
-        min_x = slab.Rhos[0]
+        min_x = Slab.Rhos[0]
     if max_x is None:
-        max_x = slab.Rhos[-1]
+        max_x = Slab.Rhos[-1]
 
     step_x = (max_x - min_x) / Nx
     step_z = (max_z - min_z) / Nz
@@ -165,9 +172,9 @@ def interactive_spectral_integrand_1d(
 
     if f0 is None:
         if min_s is None:
-            min_s = slab.Rhos[0]
+            min_s = Slab.Rhos[0]
         if max_s is None:
-            max_s = slab.Rhos[-1]
+            max_s = Slab.Rhos[-1]
 
         step_s = (max_s - min_s) / Ns
 
@@ -182,7 +189,7 @@ def interactive_spectral_integrand_1d(
 
         def int_plot(x, z, s):
             ax.clear()
-            fs = slab.spectral_integrand(
+            fs = Slab.spectral_integrand(
                 Cs,
                 f0=None,
                 s=s,
@@ -219,7 +226,7 @@ def interactive_spectral_integrand_1d(
 
             if plot_Z_evanescent:
                 ax.axvline(
-                    slab.Z_evanescent.real,
+                    Slab.Z_evanescent.real,
                     color="grey",
                     linestyle=":",
                     linewidth=1.25,
@@ -237,9 +244,9 @@ Current x: %.3f, Current s: %.3f, Current z: %.3f" % (x, s, z),
         )
     else:
         # if Lx is None:
-        #     Lx = slab.Rhos[0]
+        #     Lx = Slab.Rhos[0]
         # if Rx is None:
-        #     Rx = slab.Rhos[-1]
+        #     Rx = Slab.Rhos[-1]
 
         if class_A_only and class_B_only:
             raise ValueError(
@@ -248,7 +255,7 @@ can be set to True."
             )
 
         if class_A_only:
-            alpha_A = slab.radiation_transform(
+            alpha_A = Slab.radiation_transform(
                 Cs,
                 f0=f0,
                 sign="+1",
@@ -260,7 +267,7 @@ can be set to True."
             alpha_B = None
 
         elif class_B_only:
-            alpha_B = slab.radiation_transform(
+            alpha_B = Slab.radiation_transform(
                 Cs,
                 f0=f0,
                 sign="-1",
@@ -271,7 +278,7 @@ can be set to True."
             )
             alpha_A = None
         else:
-            alpha_A = slab.radiation_transform(
+            alpha_A = Slab.radiation_transform(
                 Cs,
                 f0=f0,
                 sign="+1",
@@ -280,7 +287,7 @@ can be set to True."
                 field_type=field_type,
                 Normalizer=Normalizer,
             )
-            alpha_B = slab.radiation_transform(
+            alpha_B = Slab.radiation_transform(
                 Cs,
                 f0=f0,
                 sign="-1",
@@ -292,7 +299,7 @@ can be set to True."
 
         def int_plot(x, z):
             ax.clear()
-            fs = slab.spectral_integrand(
+            fs = Slab.spectral_integrand(
                 Cs,
                 f0,
                 x=x,
@@ -332,7 +339,7 @@ can be set to True."
 
             if plot_Z_evanescent:
                 ax.axvline(
-                    slab.Z_evanescent.real,
+                    Slab.Z_evanescent.real,
                     color="grey",
                     linestyle=":",
                     linewidth=1.25,
@@ -352,7 +359,7 @@ Current x: %.3f, Current z: %.3f" % (x, z),
 
 
 def interactive_spectral_integrand_2d(
-    slab,
+    Slab,
     rmin,
     rmax,
     imin,
@@ -405,9 +412,9 @@ def interactive_spectral_integrand_2d(
     Cs = Xs + 1j * Ys
 
     if min_x is None:
-        min_x = slab.Rhos[0]
+        min_x = Slab.Rhos[0]
     if max_x is None:
-        max_x = slab.Rhos[-1]
+        max_x = Slab.Rhos[-1]
 
     step_x = (max_x - min_x) / Nx
     step_z = (max_z - min_z) / Nz
@@ -432,9 +439,9 @@ def interactive_spectral_integrand_2d(
 
     if f0 is None:
         if min_s is None:
-            min_s = slab.Rhos[0]
+            min_s = Slab.Rhos[0]
         if max_s is None:
-            max_s = slab.Rhos[-1]
+            max_s = Slab.Rhos[-1]
 
         step_s = (max_s - min_s) / Ns
 
@@ -451,7 +458,7 @@ def interactive_spectral_integrand_2d(
             x, z, s, det_power=0, plot_sdp=plot_sdp, log_abs=log_abs
         ):
             ax.clear()
-            fs = slab.spectral_integrand(
+            fs = Slab.spectral_integrand(
                 Cs,
                 f0=None,
                 x=x,
@@ -515,16 +522,16 @@ def interactive_spectral_integrand_2d(
 
             if plot_sdp:
                 if plane == "Z":
-                    sdp_vals = slab.sdp(xs, sdp_sign=sdp_sign, plane=plane)
+                    sdp_vals = sdp(Slab, xs, sdp_sign=sdp_sign, plane=plane)
                     sdp_xs, sdp_ys = sdp_vals.real, sdp_vals.imag
                     msk = np.where((sdp_ys < imax) * (sdp_ys > imin))
                 elif plane == "Beta":
-                    sdp_points = slab.sdp(
-                        ys, sdp_sign=sdp_sign, plane=plane
-                    )
+                    sdp_points = sdp(Slab,
+                                     ys, sdp_sign=sdp_sign, plane=plane
+                                     )
                     sdp_xs, sdp_ys = sdp_points.real, sdp_points.imag
-                    if (rmin <= slab.K0 * slab.n0) * (
-                        rmax >= slab.K0 * slab.n0
+                    if (rmin <= Slab.K0 * Slab.n0) * (
+                        rmax >= Slab.K0 * Slab.n0
                     ):
                         ax.plot(sdp_xs, sdp_ys)
                 elif plane == "Psi":
@@ -552,9 +559,9 @@ Current x: %.3f, Current s: %.3f, Current z: %.3f" % (x, s, z),
 
     else:
         # if Lx is None:
-        #     Lx = slab.Rhos[0]
+        #     Lx = Slab.Rhos[0]
         # if Rx is None:
-        #     Rx = slab.Rhos[-1]
+        #     Rx = Slab.Rhos[-1]
 
         if class_A_only and class_B_only:
             raise ValueError(
@@ -563,7 +570,7 @@ can be set to True."
             )
 
         if class_A_only:
-            alpha_A = slab.radiation_transform(
+            alpha_A = Slab.radiation_transform(
                 Cs,
                 f0=f0,
                 sign="+1",
@@ -576,7 +583,7 @@ can be set to True."
             alpha_B = None
 
         elif class_B_only:
-            alpha_B = slab.radiation_transform(
+            alpha_B = Slab.radiation_transform(
                 Cs,
                 f0=f0,
                 sign="-1",
@@ -588,7 +595,7 @@ can be set to True."
             )
             alpha_A = None
         else:
-            alpha_A = slab.radiation_transform(
+            alpha_A = Slab.radiation_transform(
                 Cs,
                 f0=f0,
                 sign="+1",
@@ -598,7 +605,7 @@ can be set to True."
                 field_type=field_type,
                 Normalizer=Normalizer,
             )
-            alpha_B = slab.radiation_transform(
+            alpha_B = Slab.radiation_transform(
                 Cs,
                 f0=f0,
                 sign="-1",
@@ -613,7 +620,7 @@ can be set to True."
             x, z, det_power=0, plot_sdp=plot_sdp, log_abs=log_abs
         ):
             ax.clear()
-            fs = slab.spectral_integrand(
+            fs = Slab.spectral_integrand(
                 Cs,
                 f0=f0,
                 x=x,
@@ -665,16 +672,16 @@ can be set to True."
 
             if plot_sdp:
                 if plane == "Z":
-                    sdp_vals = slab.sdp(xs, sdp_sign=sdp_sign, plane=plane)
+                    sdp_vals = sdp(Slab, xs, sdp_sign=sdp_sign, plane=plane)
                     sdp_xs, sdp_ys = sdp_vals.real, sdp_vals.imag
                     msk = np.where((sdp_ys < imax) * (sdp_ys > imin))
                 elif plane == "Beta":
-                    sdp_points = slab.sdp(
-                        ys, sdp_sign=sdp_sign, plane=plane
-                    )
+                    sdp_points = sdp(Slab,
+                                     ys, sdp_sign=sdp_sign, plane=plane
+                                     )
                     sdp_xs, sdp_ys = sdp_points.real, sdp_points.imag
-                    if (rmin <= slab.K0 * slab.n0) * (
-                        rmax >= slab.K0 * slab.n0
+                    if (rmin <= Slab.K0 * Slab.n0) * (
+                        rmax >= Slab.K0 * Slab.n0
                     ):
                         ax.plot(sdp_xs, sdp_ys)
                 elif plane == "Psi":
@@ -702,7 +709,7 @@ Current x: %.3f, Current z: %.3f" % (x, z),
 
 
 def interactive_radiation_mode_plot(
-    slab,
+    Slab,
     minZ=0.001,
     maxZ=1,
     NZ=200,
@@ -727,22 +734,22 @@ def interactive_radiation_mode_plot(
     if part not in ["real", "imag", "norm"]:
         raise ValueError("Part must be 'real', 'imag', or 'norm'.")
     if xs is None:
-        xs = slab.all_Xs
+        xs = Slab.all_Xs
 
     if minwl is None or maxwl is None:
-        minwl, maxwl = slab.wl, slab.wl
+        minwl, maxwl = Slab.wl, Slab.wl
 
-    methods = slab.radiation_mode_normalization_methods
+    methods = Slab.radiation_mode_normalization_methods
     if method not in methods:
         raise ValueError("Method must be one of: " + str(methods))
-    Normalizer = slab.normalizer(method=method)
+    Normalizer = Slab.normalizer(method=method)
 
     def F_plot(Z, wl):
         ax.clear()
-        slab.wl = wl
+        Slab.wl = wl
 
         if sign == "both":
-            F1 = slab.fields(
+            F1 = Slab.fields(
                 Z,
                 plane=plane,
                 mode_type="radiation",
@@ -751,7 +758,7 @@ def interactive_radiation_mode_plot(
                 sign="1",
             )
 
-            F2 = slab.fields(
+            F2 = Slab.fields(
                 Z,
                 plane=plane,
                 mode_type="radiation",
@@ -771,7 +778,7 @@ def interactive_radiation_mode_plot(
             ax.plot(xs, ys2, **line_args)
 
         else:
-            F = slab.fields(
+            F = Slab.fields(
                 Z,
                 plane=plane,
                 mode_type="radiation",
@@ -796,7 +803,7 @@ def interactive_radiation_mode_plot(
             ax.set_ylim(ylims[:])
 
         if plot_Rhos:
-            for Rho in slab.Rhos[1:-1]:
+            for Rho in Slab.Rhos[1:-1]:
                 ax.axvline(Rho, linestyle=":", linewidth=1, color="grey")
 
         plt.title(

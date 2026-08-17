@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import quad_vec
+from warnings import warn
 from .normalizers import OurMethod
 from .contours import real_contour
 from .fields import Field
@@ -691,11 +692,15 @@ spaced spaced intervals.")
             Coefficients of guided field (integral of f0 against each guided
             mode).
         """
+        if self.Slab.Z_max_guided.imag == 0:
+            warn("Structure does not support guided modes.  Setting guided \
+field to zero function.")
+            return lambda x, z: 0
         try:
-            Zs = self.Slab.guided_mode_propagation_constants
+            Zs = self.Slab.guided_prop_constants
         except AttributeError:
             self.Slab.get_guided_modes(Nref, field_type=field_type)
-            Zs = self.Slab.guided_mode_propagation_constants
+            Zs = self.Slab.guided_prop_constants
 
         def integrand(x, C):
             return f0(x) * self.Slab.vectorized_fields(
@@ -703,7 +708,7 @@ spaced spaced intervals.")
                 x,
                 mode_type="guided",
                 field_type=field_type,
-                Coeffs=self.Slab.guided_mode_regional_coefficients
+                Coeffs=self.Slab.guided_regional_coeffs
             )
 
         coeffs = quad_vec(

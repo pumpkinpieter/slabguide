@@ -190,6 +190,7 @@ class Slab:
         self.K_low, self.K_high = np.min(self.Ks), np.max(self.Ks)
 
         # Z value where radiation modes have hyperbolic parts (0 if n_low = n0)
+        # Also appears to be where leaky modes cutoff.
         self.Z_hyperbolic = self.K0 * np.sqrt(self.n0**2 - self.n_low**2)
 
         # Z value where radiation modes shift from propagating to evanescent
@@ -201,16 +202,20 @@ class Slab:
         #     np.max(self.ns[[0, -1]]) ** 2 - np.min(self.ns[[0, -1]]) ** 2
         # )
 
-        # Max pure imaginary value for guided modes in Z plane
-        self.Z_max_guided = self.Zi_from_Beta(self.K_high)
-
         # V number of guide
         self.V = self.K0 * np.sqrt(self.n_high**2 - self.n0**2, dtype=complex)
 
+        # Max pure imaginary value for guided modes in Z plane
+        self.Z_max_guided = 1j * self.V
+
+        # Set Z_max_guided to zero if V number is imaginary
+        if self.n_high <= self.n0:
+            self.Z_max_guided = 0 + 0j
+
         if hasattr(self, "guided_modes"):
             delattr(self, "guided_modes")
-            delattr(self, "guided_mode_propagation_constants")
-            delattr(self, "guided_mode_regional_coefficients")
+            delattr(self, "guided_prop_constants")
+            delattr(self, "guided_regional_coeffs")
 
     def check_parameters(self, ts, ns, xrefs):
 
@@ -1367,26 +1372,6 @@ arrays for xs and zs to levarage product nature of fields.")
 
 # --------------Automated Mode Finding and Field Construction -----------------
 
-    def get_guided_modes(self, Nref=3000, rounding=8, field_type='TE'):
-        """
-        Calculate guided modes of the structure.
-
-        Parameters
-        ----------
-        Nref : int, optional
-            Number of points in interval for guided mode search. The default is
-            3000.
-        """
-        if not hasattr(self, 'guided_mode_propagation_constants'):
-            self.get_guided_propagation_constants(Nref=Nref,
-                                                  field_type=field_type)
-        Zs = self.guided_mode_propagation_constants
-        Coeffs = self.coefficients(Zs,
-                                   mode_type='guided',
-                                   field_type=field_type)
-        self.guided_mode_regional_coefficients = Coeffs
-        self.guided_modes = [self.fields(Z, rounding=rounding) for Z in Zs]
-
     def get_guided_propagation_constants(self, Nref=3000, rounding=8,
                                          field_type='TE'):
         """
@@ -1398,6 +1383,12 @@ arrays for xs and zs to levarage product nature of fields.")
             Number of points in interval for guided mode search. The default is
             3000.
         """
+
+        if self.Z_max_guided.imag == 0:
+            warn("Structure does not support guided modes.  Setting empty \
+lists for attribute guided_prop_constants.")
+            self.guided_prop_constants = []
+            return
 
         def F(x): return -np.log(np.abs(self.eigenvalues(x*1j))**2)
 
@@ -1420,7 +1411,35 @@ arrays for xs and zs to levarage product nature of fields.")
         Zs = 1j * np.unique(Zs.imag)  # Remove possible repeats
         Zs = np.flip(Zs)  # Invert order so fundamental comes first
 
-        self.guided_mode_propagation_constants = Zs
+        self.guided_prop_constants = Zs
+
+    def get_guided_modes(self, Nref=3000, rounding=8, field_type='TE'):
+        """
+        Calculate guided modes of the structure.
+
+        Parameters
+        ----------
+        Nref : int, optional
+            Number of points in interval for guided mode search. The default is
+            3000.
+        """
+        if not hasattr(self, 'guided_prop_constants'):
+            self.get_guided_propagation_constants(Nref=Nref,
+                                                  field_type=field_type)
+        Zs = self.guided_prop_constants
+
+        if len(Zs) == 0:
+            warn("Structure does not support guided modes.  Setting empty \
+list for attribute guided_modes and None  guided_regional_coeffs.")
+            self.guided_modes = []
+            self.guided_regional_coeffs = None
+            return
+
+        Coeffs = self.coefficients(Zs,
+                                   mode_type='guided',
+                                   field_type=field_type)
+        self.guided_regional_coeffs = Coeffs
+        self.guided_modes = [self.fields(Z, rounding=rounding) for Z in Zs]
 
 # ------------------------Steepest Descent Path Methods------------------------
 
