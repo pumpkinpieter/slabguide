@@ -35,7 +35,7 @@ point 's' must be provided."
     delta_transform = f0 is None and s is not None
 
     if delta_transform:
-        return Slab.fields_vec(
+        return Slab.vectorized_fields(
             Cs,
             s,
             field_type=field_type,
@@ -58,7 +58,7 @@ is recommended to rerun using more accurate bound on the support of f0.")
             Rx = Slab.Rhos[-1]
 
         def integrand(x, C, sign="+1"):
-            return f0(x) * Slab.fields_vec(
+            return f0(x) * Slab.vectorized_fields(
                 C,
                 x,
                 field_type=field_type,
@@ -115,7 +115,7 @@ can be set to True.")
                 plane=plane,
                 Normalizer=Normalizer,
             )
-        field_value = Slab.fields_vec(
+        field_value = Slab.vectorized_fields(
             Cs,
             x,
             z=z,
@@ -141,7 +141,7 @@ can be set to True.")
                 Normalizer=Normalizer,
             )
 
-        field_value = Slab.fields_vec(
+        field_value = Slab.vectorized_fields(
             Cs,
             x,
             z=z,
@@ -180,7 +180,7 @@ can be set to True.")
                 Normalizer=Normalizer,
             )
 
-        field_value_A = Slab.fields_vec(
+        field_value_A = Slab.vectorized_fields(
             Cs,
             x,
             z=z,
@@ -191,7 +191,7 @@ can be set to True.")
             Normalizer=Normalizer,
         )
 
-        field_value_B = Slab.fields_vec(
+        field_value_B = Slab.vectorized_fields(
             Cs,
             x,
             z=z,

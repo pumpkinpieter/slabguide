@@ -7,6 +7,7 @@ Created on Wed Jul 29 13:39:20 2026
 """
 import numpy as np
 import matplotlib.pyplot as plt
+from ..sdp import sdp
 
 
 def plot_points(Cs, m="o", ms=5, ax=None, **kwargs):
@@ -143,11 +144,15 @@ def eigenvalue_plot(
     rmax,
     imin,
     imax,
-    plane="Z",
-    derivate=False,
     rref=200,
     iref=200,
     levels=70,
+    plane="Z",
+    field_type="TE",
+    mode_type="guided",
+    derivate=False,
+    even=False,
+    odd=False,
     log_abs=True,
     equal=False,
     grid=True,
@@ -157,11 +162,10 @@ def eigenvalue_plot(
     cmap="viridis",
     part="norm",
     facecolor="gray",
-    field_type="TE",
-    mode_type="guided",
     plot_sdp=False,
     sdp_sign=-1,
     plot_axis=True,
+    plot_Z_evanescent=True,
     axis_linewidth=0.7,
     axis_linecolor="k",
     Normalizer=None,
@@ -179,6 +183,12 @@ def eigenvalue_plot(
     plt.close("all")
     xs = np.linspace(rmin, rmax, num=rref)
     ys = np.linspace(imin, imax, num=iref)
+
+    if max(xs) < Slab.Z_evanescent.real:
+        plot_Z_evanescent = False
+    if min(xs) > Slab.Z_evanescent.real:
+        plot_Z_evanescent = False
+
     Xs, Ys = np.meshgrid(xs, ys)
     Cs = Xs + 1j * Ys
 
@@ -190,6 +200,8 @@ def eigenvalue_plot(
         Normalizer=Normalizer,
         sign=sign,
         derivate=derivate,
+        even=even,
+        odd=odd,
     )
 
     if part == "real":
@@ -223,19 +235,19 @@ def eigenvalue_plot(
 
     if plot_sdp:
         if plane == "Z":
-            sdp_points = Slab.sdp(xs, sdp_sign=sdp_sign, plane=plane)
+            sdp_points = sdp(Slab, xs, sdp_sign=sdp_sign, plane=plane)
             sdp_ys = sdp_points.imag
             msk = np.where((sdp_ys < imax) * (sdp_ys > imin))
             ax.plot(xs[msk], sdp_ys[msk], c=sdp_lc)
 
         elif plane == "Beta":
-            sdp_points = Slab.sdp(ys, sdp_sign=sdp_sign, plane=plane)
+            sdp_points = sdp(Slab, ys, sdp_sign=sdp_sign, plane=plane)
             sdp_xs, sdp_ys = sdp_points.real, sdp_points.imag
             if (rmin <= Slab.K0 * Slab.n0) * (rmax >= Slab.K0 * Slab.n0):
                 ax.plot(sdp_xs, sdp_ys, c=sdp_lc)
 
         elif plane == "Psi":
-            sdp_points = Slab.sdp(ys, sdp_sign=sdp_sign, plane=plane)
+            sdp_points = sdp(Slab, ys, sdp_sign=sdp_sign, plane=plane)
             sdp_xs, sdp_ys = sdp_points.real, sdp_points.imag
             msk = np.where((sdp_xs < rmax) * (sdp_xs > rmin))
             ax.plot(sdp_xs[msk], sdp_ys[msk], c=sdp_lc)
@@ -258,6 +270,13 @@ def eigenvalue_plot(
         )
     fig.suptitle("Determinant Plot in %s Plane\n" % plane,
                  fontsize=title_fontsize)
+    if plot_Z_evanescent:
+        ax.axvline(
+            Slab.Z_evanescent.real,
+            color="grey",
+            linestyle=":",
+            linewidth=1.25,
+        )
     return fig, ax, im
 
 
@@ -334,4 +353,12 @@ def eigenvalue_plot_1d(
     ax.plot(xs.real, Fs, **lineargs)
     fig.suptitle("Determinant Plot in %s Plane\n" % plane,
                  fontsize=title_fontsize)
+
+    if plot_Z_evanescent:
+        ax.axvline(
+            Slab.Z_evanescent.real,
+            color="grey",
+            linestyle=":",
+            linewidth=1.25,
+        )
     return fig, ax

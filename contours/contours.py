@@ -1,5 +1,5 @@
 import numpy as np
-from ._sdp import sdp, sdp_derivative
+from ..sdp import sdp
 
 
 def real_contour(x_start, x_end, N, s_start=0, s_end=1):

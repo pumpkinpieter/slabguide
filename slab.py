@@ -9,18 +9,24 @@ Class for modeling fibers with 1D transverse plane.
 """
 
 import numpy as np
-from ._normalizers import OurMethod
+from .normalizers import OurMethod
+from .sdp import sdp, sdp_derivative
+from .fields import Field
+from .plotting import (plot_field_1d, plot_field_2d, add_1d_plot, add_2d_plot,
+                       plot_field_2d_surface, add_2d_plot_surface,
+                       eigenvalue_plot, eigenvalue_plot_1d, plot_points,
+                       plot_refractive_index)
 from copy import deepcopy
 from warnings import warn
-from scipy.optimize import newton
+from scipy.optimize import newton, minimize
 
 
-class SlabGuide:
+class Slab:
     """A class for calculating the fields of step index slab waveguides."""
 
     def __init__(
         self,
-        Ts=[3, 2, 3],
+        Ts=[6, 2, 6],
         ns=[1.3, 1.5, 1.3],
         wl=1.8e-6,
         scale=1e-6,
@@ -37,7 +43,7 @@ class SlabGuide:
             thickness of the layers of the guide, from left to right.  The
             first and last entries define the extent of the outer region of the
             guide, truncating that which would otherwise extend indefinitely.
-            The default is [3, 2, 3].
+            The default is [6, 2, 6].
         ns : list or array, optional
             A list of refractive indices. These give the refractive index of
             each layer of material. The first and last entry must be equal.
@@ -49,8 +55,8 @@ class SlabGuide:
             default is 1e-6.
         xrefs : list or array, optional
             Number of x values to have in each region when constructing x
-            values for plotting. If None, each region is given 21 points. The
-            default is None, 
+            values for plotting. If None, values are chosen to give good
+            resolution based on region thickness. The default is None. 
         no_xs : bool, optional
             Whether or not to create and store array of x values.  Used
             primarily in applications where plotting is not desired. The
@@ -79,8 +85,12 @@ class SlabGuide:
         # Material interface coordinates (non-dimensional)
         self.Rhos = np.array([sum(self.Ts[:i]) for i in range(len(self.Ts)
                                                               + 1)])
+        self.N_regions = len(self.Rhos) - 1
         if xrefs is None:
-            xrefs = np.array(self.Ts * 20, dtype=int) + 1
+            f = np.array(ns) / np.min(np.array(ns))
+            k = 10
+            s = (k * (f - 1.0))**(1/5) + 1
+            xrefs = np.array(s * self.Ts * 50, dtype=int) + 1
 
         self.xrefs = xrefs
 
@@ -114,6 +124,31 @@ class SlabGuide:
         # Check if guide is symmetric (not yet utilized but plan to use this to
         # reduce computational load in calculating transmission matrix)
         self.is_symmetric = self.check_symmetric()
+
+        # Define base regional models
+        # def M(x, Z, i, **kwargs):
+        #     return np.exp(1j * Z * (x - kwargs['Offsets'][i][0]))
+
+        # def N(x, Z, i, **kwargs):
+        #     return np.exp(-1j * Z * (x - kwargs['Offsets'][i][1]))
+
+        # def dMdx(x, Z, i, **kwargs): return 1j * Z * M(x, Z, i, **kwargs)
+        # def dNdx(x, Z, i, **kwargs): return -1j * Z * N(x, Z, i, **kwargs)
+
+        # # Collect models in dictionary
+        # model_dict = {'M': M, 'N': N, 'dMdx': dMdx, 'dNdx': dNdx}
+
+        # # Assign to each region.
+        # self.regional_models = [model_dict for i in range(self.N_regions)]
+
+        # # Define non-dimensional offsets for regional fields
+        # # self.get_optimal_offsets()  # need to fix for dual shifts
+        # self.Offsets = [[self.Rhos[i], self.Rhos[i+1]]
+        #                 for i in range(1, len(self.Rhos)-1)]
+        # self.Offsets.insert(0, [self.Rhos[1], self.Rhos[1]])
+        # self.Offsets[-1] = [self.Rhos[-2], self.Rhos[-2]]
+        # self.Offsets = np.array(self.Offsets)
+        # self.model_kwargs = {'Offsets': self.Offsets}
 
     def __name__():
         return "Slab"
@@ -238,6 +273,42 @@ try again.")
             return True
         return False
 
+    def get_optimal_offsets(self,):
+        '''
+        Find optimal offsets for regional fields.
+
+        Based on minimizing the impact on blow up in transfer matrix entries
+        caused by large values of the exponential function.  These values occur
+        when the imaginary part of regional transverse propagation constant (Z)
+        is non-trival, and can be ameliorated by making the remaining portion
+        of the exponent, namely (rho_j - a_j) or (rho_j - a_(j-1)) as small as
+        possible (including weighting by the size of the imaginary part of Z).
+
+        Note that since the objective funciton is a simple quadratic, there is
+        a closed form solution for the minimum, which we should implement soon.
+
+        Returns
+        -------
+        None
+            Sets attribute self.Offsets with result of minimization.
+        '''
+        Z0 = self.Z_max_guided
+        Zs = np.array([self.Zi_from_Z0(Z0, n) for n in self.ns])
+
+        def F(a_s):
+            s = 0
+            for i in range(1, len(self.Rhos)-1):
+                Z_left, Z_right = Zs[i-1], Zs[i]
+                if np.abs(Z_left.imag) > 1e-9:
+                    s += Z_left.imag**2 * (self.Rhos[i] - a_s[i-1])**2
+                if np.abs(Z_right.imag) > 1e-9:
+                    s += Z_right.imag**2 * (self.Rhos[i] - a_s[i])**2
+            return s
+
+        output = minimize(F, np.zeros(len(self.Rhos)-1))
+        self.Offsets = output['x']
+        return output['x']
+
     def condition_list(self, xs):
         '''
         Generate condition list for piecewise function definitions.
@@ -306,7 +377,7 @@ try again.")
             return Psi0
         return np.arccos(self.n0 / ni * np.cos(Psi0))
 
-    def region_index(self, xs):
+    def region_index(self, xs, continuity='left'):
         """Return region indices in which (non-dimensional) xs lie.  Indexing
         is based on left-continuity, so if x is in (rho_i, rho_i+1) it gets
         index i.  Points outside of domain on left get index 0, on right get
@@ -316,21 +387,28 @@ try again.")
             xs = np.array(xs)
         except TypeError:
             xs = np.array([xs])
+
+        if continuity not in ['left', 'right']:
+            raise ValueError('Must have continuity = "left" or "right"')
         idx = np.zeros_like(xs, dtype=int)
 
         idx[np.where(xs <= self.Rhos[0])] = 0
         for j in range(len(self.Rhos) - 1):
-            idx[np.where((xs <= self.Rhos[j + 1]) * (xs > self.Rhos[j]))] = j
-        idx[np.where((xs > self.Rhos[-1]))] = j
+            if continuity == 'left':
+                condition = (xs <= self.Rhos[j + 1]) * (xs > self.Rhos[j])
+            else:
+                condition = (xs < self.Rhos[j + 1]) * (xs >= self.Rhos[j])
+            idx[np.where(condition)] = j
+        idx[np.where((xs >= self.Rhos[-1]))] = j
 
         if len(xs) == 1:
             return idx[0]
         return idx
 
-    def ns_from_xs(self, xs):
+    def ns_from_xs(self, xs, continuity='left'):
         """Return refractive indices from regions in which (non-dimensional) xs
         lie."""
-        return self.ns[self.region_index(xs)]
+        return self.ns[self.region_index(xs, continuity=continuity)]
 
     # ------------ Matrices and Determinant (Eigenvalue) Functions -----------------
 
@@ -379,11 +457,23 @@ try again.")
 
         S = np.zeros(C.shape + (2, 2), dtype=np.complex128)
 
+        # Offset = self.Offsets[region_idx]
+
         S[..., 0, 0] = np.exp(1j * Z * x)
         S[..., 0, 1] = np.exp(-1j * Z * x)
 
         S[..., 1, 0] = 1j * Z / self.K0 * np.exp(1j * Z * x)
         S[..., 1, 1] = -1j * Z / self.K0 * np.exp(-1j * Z * x)
+
+        # models = self.regional_models[region_idx]
+
+        # S[..., 0, 0] = models['M'](x, Z, region_idx, **self.model_kwargs)
+        # S[..., 0, 1] = models['N'](x, Z, region_idx, **self.model_kwargs)
+
+        # S[..., 1, 0] = 1 / self.K0 * models['dMdx'](x, Z, region_idx,
+        #                                             **self.model_kwargs)
+        # S[..., 1, 1] = 1 / self.K0 * models['dNdx'](x, Z, region_idx,
+        #                                             **self.model_kwargs)
 
         if field_type == "TM":
             S[..., 1, 0] /= n**2
@@ -407,15 +497,11 @@ try again.")
         Parameters
         ----------
         C : complex
-            Complex number input.  Keyword argument 'plane' determines whether
+            Complex input value.  Keyword argument 'plane' determines whether
             this number represents transverse propagation constant 'Z0', 
             longitudinal propagation constant 'Beta' or radiation angle 'Psi0'.
-        Rho : TYPE
-            DESCRIPTION.
-        n_left : TYPE
-            DESCRIPTION.
-        n_right : TYPE
-            DESCRIPTION.
+        interface_idx : int
+            Index of material interface for this transfer matrix.
         field_type : TYPE, optional
             DESCRIPTION. The default is "TE".
         Ztype_left : TYPE, optional
@@ -439,11 +525,10 @@ try again.")
 
         Notes
         -----
-        Takes non-dimensional complex inputs (C) and forms Z_left and Z_right
-        from them.  This allows one to choose between equivalent forms for
-        Z which satisfy Z^2 = K^2 - C^2, which can move branch cuts in the
-        eigenvalue function and help visualize things in the complex Beta
-        plane.
+        Given an input 'C', manipulating the values of 'Z_left' and 'Z_right' 
+        shifts between values of Z satisfying $Z^2 = K^2 - C^2$. Altering them
+        can move branch cuts in the eigenvalue function when working with
+        'plane=Beta'.
         '''
 
         if field_type not in ["TE", "TM"]:
@@ -491,6 +576,7 @@ try again.")
                 raise ValueError("Ztype must be standard or imag.")
 
             if derivate:
+                pass
                 Z0 = self.Zi_from_Beta(Beta, ni=self.n0)
             #     derivative_scaling = -Beta / Z0
 
@@ -514,8 +600,24 @@ try again.")
 
         M = np.zeros(C.shape + (2, 2), dtype=np.complex128)
 
-        Exp_minus = 1j * (Z_right - Z_left) * Rho
-        Exp_plus = 1j * (Z_right + Z_left) * Rho
+        # L_offsets = self.Offsets[interface_idx-1]
+        # R_offsets = self.Offsets[interface_idx]
+
+        # Exp_00 = 1j * (Z_right * (Rho - R_offsets[0]) -
+        #                Z_left * (Rho - L_offsets[0]))
+
+        # Exp_01 = 1j * (Z_right * (Rho - R_offsets[0]) +
+        #                Z_left * (Rho - L_offsets[1]))
+
+        # Exp_10 = 1j * (Z_right * (Rho - R_offsets[1]) +
+        #                Z_left * (Rho - L_offsets[0]))
+
+        # Exp_11 = 1j * (Z_right * (Rho - R_offsets[1]) -
+        #                Z_left * (Rho - L_offsets[1]))
+
+        Exp_m = 1j * Rho * (Z_right - Z_left)
+        Exp_p = 1j * Rho * (Z_right + Z_left)
+
         front_term = 1 / Z_right
 
         if field_type == "TM":
@@ -527,14 +629,49 @@ try again.")
             front_term *= 1 / 2
             A_minus = Z_right - Z_left
             A_plus = Z_right + Z_left
-        else:
-            raise ValueError("Field type must be TE or TM.")
 
-        M[..., 0, 0] = front_term * np.exp(-Exp_minus) * A_plus
-        M[..., 0, 1] = front_term * np.exp(-Exp_plus) * A_minus
+        M[..., 0, 0] = front_term * np.exp(-Exp_m) * A_plus
+        M[..., 0, 1] = front_term * np.exp(-Exp_p) * A_minus
 
-        M[..., 1, 0] = front_term * np.exp(Exp_plus) * A_minus
-        M[..., 1, 1] = front_term * np.exp(Exp_minus) * A_plus
+        M[..., 1, 0] = front_term * np.exp(Exp_p) * A_minus
+        M[..., 1, 1] = front_term * np.exp(Exp_m) * A_plus
+
+        # if field_type == "TM":
+        #     n_l, n_r = n_left, n_right
+
+        # elif field_type == "TE":
+        #     n_l, n_r = 1, 1
+
+        # models_left = self.regional_models[interface_idx-1]
+
+        # M_l = models_left['M'](Rho, Z_left, interface_idx-1,
+        #                        **self.model_kwargs)
+        # Mp_l = models_left['dMdx'](Rho, Z_left, interface_idx-1,
+        #                            **self.model_kwargs)
+        # N_l = models_left['N'](Rho, Z_left, interface_idx-1,
+        #                        **self.model_kwargs)
+        # Np_l = models_left['dNdx'](Rho, Z_left, interface_idx-1,
+        #                            **self.model_kwargs)
+
+        # models_right = self.regional_models[interface_idx]
+
+        # M_r = models_right['M'](Rho, Z_right, interface_idx,
+        #                         **self.model_kwargs)
+        # Mp_r = models_right['dMdx'](Rho, Z_right, interface_idx,
+        #                             **self.model_kwargs)
+        # N_r = models_right['N'](Rho, Z_right, interface_idx,
+        #                         **self.model_kwargs)
+        # Np_r = models_right['dNdx'](Rho, Z_right, interface_idx,
+        #                             **self.model_kwargs)
+
+        # W_r = M_r * Np_r - Mp_r * N_r
+        # f = 1 / (W_r * n_l**2)
+
+        # M[..., 0, 0] = f * (Np_r * M_l * n_l**2 - N_r * Mp_l * n_r**2)
+        # M[..., 0, 1] = f * (Np_r * N_l * n_l**2 - N_r * Np_l * n_r**2)
+
+        # M[..., 1, 0] = f * (-Mp_r * M_l * n_l**2 + M_r * Mp_l * n_r**2)
+        # M[..., 1, 1] = f * (-Mp_r * N_l * n_l**2 + M_r * Np_l * n_r**2)
 
         if derivate:
             D = np.zeros_like(M)
@@ -544,6 +681,7 @@ try again.")
             D[..., 1, 0] = -front_term * A_plus * (1 - 1j * Z_right * Rho)
             D[..., 1, 1] = front_term * A_minus * (1 - 1j * Z_right * Rho)
             M = M * D
+            # pass
 
         return M
 
@@ -644,7 +782,7 @@ try again.")
                         L, R = "standard", "standard"
 
                     T = (
-                        self.transfer_matrix(C, i,
+                        self.transfer_matrix(C, j,
                                              field_type=field_type,
                                              Ztype_left=L, Ztype_right=R,
                                              plane=plane, derivate=derivate,
@@ -669,7 +807,7 @@ try again.")
                                     Ztype=Ztype)[0]
             j = 1 + 2 * (i-1)
             M[j: j+2, j-1: j+1] = S_L[:]
-            M[j: j+2, j+1: j+3] = S_R[:]
+            M[j: j+2, j+1: j+3] = -S_R[:]
 
         return M
 
@@ -682,9 +820,11 @@ try again.")
         Normalizer=None,
         sign=1,
         derivate=False,
+        even=False,
+        odd=False,
     ):
         '''
-        Function whose zeros correspond to the propagation constants
+        Function whose zeroes correspond to the propagation constants
         for discrete modes of the waveguide (both leaky and guided).
 
         Parameters
@@ -724,13 +864,35 @@ try again.")
             raise ValueError("Mode type must be 'guided', 'leaky' or \
 'radiation'.")
 
+        if even and odd:
+            raise ValueError("Only one of even and odd can be set to true")
+
+        if (even or odd) and (not self.is_symmetric):
+            raise ValueError("Non-symmetric guides don't have even/odd modes.")
+
         if mode_type == "guided":
+            if even or odd:
+                s = -1
+                M = self.transmission_matrix(
+                    C, plane=plane, field_type=field_type, derivate=derivate,
+                    up_to_region=int(len(self.Rhos)/2)-1)
+                if odd:
+                    s = 1
+                return M[..., 0, 1] + s * M[..., 1, 1]
             M = self.transmission_matrix(
                 C, plane=plane, field_type=field_type, derivate=derivate
             )
             return M[..., 1, 1]
 
         elif mode_type == "leaky":
+            if even or odd:
+                s = -1
+                M = self.transmission_matrix(
+                    C, plane=plane, field_type=field_type, derivate=derivate,
+                    up_to_region=int(len(self.Rhos)/2))
+                if odd:
+                    s = 1
+                return M[..., 0, 0] + s * M[..., 1, 0]
             M = self.transmission_matrix(
                 C, plane=plane, field_type=field_type, derivate=derivate
             )
@@ -777,7 +939,7 @@ try again.")
             base *= self.ns[up_to_region] ** 2 / self.ns[0] ** 2
         return base
 
-    # ---------- Building Fields from Propagation Constants in Beta Plane ---------
+# --------------- Building Fields from Propagation Constants ------------------
 
     def coefficients(
         self,
@@ -790,6 +952,8 @@ try again.")
         up_to_region=-1,
         rounding=12,
         manual_coeffs=None,
+        even=False,
+        odd=False,
     ):
         """Return field coefficients given propagation constant C."""
 
@@ -802,6 +966,12 @@ try again.")
         if mode_type not in ["guided", "leaky", "radiation"]:
             raise ValueError("Mode type must be 'guided', 'leaky' or \
 'radiation.")
+
+        if even and odd:
+            raise ValueError("Only one of even and odd can be set to true")
+
+        if (even or odd) and (not self.is_symmetric):
+            raise ValueError("Non-symmetric guides don't have even/odd modes.")
 
         # Single scalar inputs need to be given at least a single dimension
         try:
@@ -897,8 +1067,19 @@ try again.")
             C.shape + (2, len(Rhos) + up_to_region), dtype=complex
         )
 
+        # Do this after setting array for Coeffs to keep it correct shape
+        if even or odd:
+            up_to_region = int(len(self.Rhos)/2) - len(Rhos) + 1
+
         # set first vectors in each coefficient array
         Coeffs[..., :, 0] = M0[..., :, 0]
+
+        if even:
+            Coeffs[..., 0, -1] = M0[..., 1, 0]
+            Coeffs[..., 1, -1] = M0[..., 0, 0]
+        if odd:
+            Coeffs[..., 0, -1] = -M0[..., 1, 0]
+            Coeffs[..., 1, -1] = -M0[..., 0, 0]
 
         Ztypes = ["standard" for i in range(len(self.Rhos) - 1)]
         Ztypes[0], Ztypes[-1] = Ztype_far_left, Ztype_far_right
@@ -913,14 +1094,25 @@ try again.")
                 plane=plane,
             )
 
-            M0 = T @ M0  # apply T to vectors
-            Coeffs[..., :, i] = M0[..., :, 0]  # update coefficient arrays
+            # Apply T to coefficient vector to get coeffs in next region.
+            M0 = T @ M0
+
+            # Update coefficient arrays
+            Coeffs[..., :, i] = M0[..., :, 0]
+
+            # Complete corresponding data in mirrored regions for even/odd case
+            if even:
+                Coeffs[..., 0, -i-1] = M0[..., 1, 0]
+                Coeffs[..., 1, -i-1] = M0[..., 0, 0]
+            if odd:
+                Coeffs[..., 0, -i-1] = -M0[..., 1, 0]
+                Coeffs[..., 1, -i-1] = -M0[..., 0, 0]
 
         # Reduce dimension for length 1 inputs
         if len(C) == 1:
             Coeffs = Coeffs[0]
 
-        # Round to avoid false blowup, noted in guided modes.
+        # Round to avoid numerical blowup, noted in guided modes.
         # Fundamental had lower error and rounding=16 worked, but HOMs
         # had more noise and required rounding=12
         Coeffs = np.round(Coeffs, decimals=rounding)
@@ -962,6 +1154,9 @@ propagation constant and/or rounding parameter." % mode_type
             Beta = K0 * self.n0 * np.cos(Psi0)
             Z = K0 * n * np.sin(self.Psi_i_from_Psi0(Psi0, n))
 
+        # models = self.regional_models[index]
+        # M, N = models['M'], models['N']
+
         def F(xs, zs=None):
 
             try:
@@ -973,8 +1168,9 @@ propagation constant and/or rounding parameter." % mode_type
             if len(xs.shape) > 1:
                 raise ValueError("Please provide single dimension arrays for \
 xs and zs to levarage product nature of fields.")
-
             ys = A * np.exp(1j * Z * xs) + B * np.exp(-1j * Z * xs)
+            # ys = A * M(xs, Z, index, **self.model_kwargs) + \
+            #     B * N(xs, Z, index, **self.model_kwargs)
 
             if zs is not None:
                 try:
@@ -1004,11 +1200,13 @@ for xs and zs to levarage product nature of fields.")
         plane="Z",
         manual_coeffs=None,
         user_coeffs=None,
+        even=False,
+        odd=False,
     ):
         """Return fields at propagation constant given by 'C' in plane
         determined by 'plane'. Vectorized in x,and z but not in C."""
 
-        # Give C at least one dimensionot
+        # Give C at least one dimension
         try:
             len(C)
             C = np.array(C, dtype=complex)
@@ -1017,6 +1215,12 @@ for xs and zs to levarage product nature of fields.")
 
         if plane not in ["Z", "Beta", "Psi"]:
             raise ValueError("Plane must be 'Beta', 'Z' or 'Psi'.")
+
+        if even and odd:
+            raise ValueError("Only one of even and odd can be set to true")
+
+        if (even or odd) and (not self.is_symmetric):
+            raise ValueError("Non-symmetric guides don't have even/odd modes.")
 
         if user_coeffs is not None:
             M = user_coeffs
@@ -1030,6 +1234,8 @@ for xs and zs to levarage product nature of fields.")
                 rounding=rounding,
                 plane=plane,
                 manual_coeffs=manual_coeffs,
+                even=even,
+                odd=odd,
             ).T
 
         Ztypes = ["standard" for i in range(len(self.Rhos) - 1)]
@@ -1090,9 +1296,9 @@ arrays for xs and zs to levarage product nature of fields.")
 
             return ys
 
-        return F
+        return Field(F)
 
-    def fields_vec(
+    def vectorized_fields(
         self,
         C,
         x,
@@ -1103,14 +1309,25 @@ arrays for xs and zs to levarage product nature of fields.")
         sign="+1",
         plane="Z",
         Coeffs=None,
+        even=False,
+        odd=False,
     ):
         """Return value of field with propagation constant C at x, z in plane
-        determined by 'plane'. Vectorized in C but not x (possibly in z)."""
+        determined by 'plane'. Vectorized in C.
+
+        Note: a goal is to fully vectorize the fields both in C, x and z."""
 
         if plane not in ["Z", "Beta", "Psi"]:
             raise ValueError("Plane must be 'Beta', 'Z' or 'Psi'.")
 
+        if even and odd:
+            raise ValueError("Only one of even and odd can be set to true")
+
+        if (even or odd) and (not self.is_symmetric):
+            raise ValueError("Non-symmetric guides don't have even/odd modes.")
+
         i = self.region_index(x)
+        # Offset = self.Offsets[i]
 
         if plane == "Beta":
             Beta = C
@@ -1137,12 +1354,16 @@ arrays for xs and zs to levarage product nature of fields.")
                 field_type=field_type,
                 sign=sign,
                 plane=plane,
+                even=even,
+                odd=odd,
             )
 
-        return (
-            Coeffs[..., 0, i] * np.exp(1j * Zi * x)
-            + Coeffs[..., 1, i] * np.exp(-1j * Zi * x)
-        ) * np.exp(1j * Beta * z)
+        # models = self.regional_models[i]
+        # M, N = models['M'], models['N']
+
+        return (Coeffs[..., 0, i] * np.exp(1j * Zi * x)
+                + Coeffs[..., 1, i] * np.exp(-1j * Zi * x)
+                ) * np.exp(1j * Beta * z)
 
 # --------------Automated Mode Finding and Field Construction -----------------
 
@@ -1180,7 +1401,7 @@ arrays for xs and zs to levarage product nature of fields.")
 
         def F(x): return -np.log(np.abs(self.eigenvalues(x*1j))**2)
 
-        xs = np.linspace(0.000001, self.Zi_from_Beta(self.K_high).imag+1, Nref)
+        xs = np.linspace(0.000001, 1.05 * self.Z_max_guided.imag, Nref)
         ys = (F(xs[1:])-F(xs[:-1])) / (xs[1:] - xs[:-1])
 
         sign_changes = xs[1:][np.where((np.sign(ys[:-1] * ys[1:])) < 0)[0]]
@@ -1196,10 +1417,51 @@ arrays for xs and zs to levarage product nature of fields.")
                 pass
 
         Zs = np.array(Zs)
-        Zs = 1j * np.unique(np.array(Zs).imag)  # Remove possible repeats
+        Zs = 1j * np.unique(Zs.imag)  # Remove possible repeats
         Zs = np.flip(Zs)  # Invert order so fundamental comes first
 
         self.guided_mode_propagation_constants = Zs
 
+# ------------------------Steepest Descent Path Methods------------------------
 
-A = SlabGuide()
+    def sdp(self, s, **kwargs):
+        return sdp(self, s, **kwargs)
+
+    def sdp_derivative(self, s, **kwargs):
+        return sdp_derivative(self, s, **kwargs)
+# ------------------------------ Plotting -------------------------------------
+
+    def plot_refractive_index(self, **kwargs):
+        return plot_refractive_index(self, **kwargs)
+
+    def plot_points(self, Cs, **kwargs):
+        return plot_points(Cs, **kwargs)
+
+    def plot_field_1d(self, F, *F_args, **kwargs):
+        return plot_field_1d(self, F, *F_args, **kwargs)
+
+    def add_1d_plot(self, F, *F_args, **kwargs):
+        return add_1d_plot(self, F, *F_args, **kwargs)
+
+    def plot_field_2d(self, F, *F_args, **kwargs):
+        return plot_field_2d(self, F, *F_args, **kwargs)
+
+    def add_2d_plot(self, F, *F_args, **kwargs):
+        return add_2d_plot(self, F, *F_args, **kwargs)
+
+    def plot_field_2d_surface(self, F, *F_args, **kwargs):
+        return plot_field_2d_surface(self, F, *F_args, **kwargs)
+
+    def add_2d_plot_surface(self, F, *F_args, **kwargs):
+        return add_2d_plot_surface(self, F, *F_args, **kwargs)
+
+    def eigenvalue_plot(self, rmin, rmax, imin, imax, **kwargs):
+        return eigenvalue_plot(self, rmin, rmax, imin, imax, **kwargs)
+
+    def eigenvalue_plot_1d(self, contour, **kwargs):
+        return eigenvalue_plot_1d(self, contour, **kwargs)
+
+
+# A = SlabGuide(ns=[0], Ts=[np.pi], xrefs=[5], center=False)
+
+# A.transmission_matrix(10j, derivate=True)

@@ -99,6 +99,8 @@ def plot_field_1d(
         plot_regions = False
         ind_vars = zs
         z_vars = True
+        plot_Rhos = False
+        plot_regions = False
     elif len(xs) > 1 and len(zs) == 1:
         ind_vars = xs
         z_vars = False
@@ -107,19 +109,29 @@ def plot_field_1d(
     else:
         raise ValueError("At least one of xs or zs must have len > 1.")
 
-    # Catch error if input F only has one variable
-    try:
-        fs = F(xs, zs, *F_args)
-        # Reduce dimension if necessary
-        if len(fs.shape) > 1:
-            if fs.shape[0] == 1 and fs.shape[1] > 1:
-                fs = fs[0]
+    if callable(F):
 
-    except TypeError:
-        if z_vars:
-            warn("Plotting single variable function of x along z axis. \
+        # Catch error if input F only has one variable
+        try:
+            fs = F(xs, zs, *F_args)
+            # Reduce dimension if necessary
+            if len(fs.shape) > 1:
+                if fs.shape[0] == 1 and fs.shape[1] > 1:
+                    fs = fs[0]
+
+        except TypeError:
+            if z_vars:
+                warn("Plotting single variable function of x along z axis. \
 This defaults to plotting function in x axis.  Consider providing xs instead.")
-        fs = F(ind_vars, *F_args)
+            fs = F(ind_vars, *F_args)
+    elif type(F) in [list, np.ndarray]:
+        fs = np.array(F, dtype=complex)
+        if len(fs) != len(ind_vars):
+            raise ValueError("Length %i of plotting data does not match \
+length %i of independent variables." % (len(fs), len(ind_vars)))
+    else:
+        raise ValueError("User must provide either callable function or data \
+of correct length for input F.")
 
     if part == "real":
         ys = fs.real
@@ -192,6 +204,8 @@ def add_1d_plot(
     ax=None,
     legend_fontsize=12,
     plot_axis=True,
+    plot_Rhos=True,
+    Rho_linewidth=1,
     axis_linewidth=0.5,
     label=None,
     **lineargs,
@@ -247,6 +261,7 @@ def add_1d_plot(
     if len(zs) > 1 and len(xs) == 1:
         ind_vars = zs
         z_vars = True
+        plot_Rhos = False
     elif len(xs) > 1 and len(zs) == 1:
         ind_vars = xs
         z_vars = False
@@ -255,19 +270,29 @@ def add_1d_plot(
     else:
         raise ValueError("At least one of xs or zs must have len > 1.")
 
-    # Catch error if input F only has one variable
-    try:
-        fs = F(xs, zs, *F_args)
-        # Reduce dimension if necessary
-        if len(fs.shape) > 1:
-            if fs.shape[0] == 1 and fs.shape[1] > 1:
-                fs = fs[0]
+    if callable(F):
 
-    except TypeError:
-        if z_vars:
-            warn("Plotting single variable function of x along z axis. \
+        # Catch error if input F only has one variable
+        try:
+            fs = F(xs, zs, *F_args)
+            # Reduce dimension if necessary
+            if len(fs.shape) > 1:
+                if fs.shape[0] == 1 and fs.shape[1] > 1:
+                    fs = fs[0]
+
+        except TypeError:
+            if z_vars:
+                warn("Plotting single variable function of x along z axis. \
 This defaults to plotting function in x axis.  Consider providing xs instead.")
-        fs = F(ind_vars, *F_args)
+            fs = F(ind_vars, *F_args)
+    elif type(F) in [list, np.ndarray]:
+        fs = np.array(F, dtype=complex)
+        if len(fs) != len(ind_vars):
+            raise ValueError("Length %i of plotting data does not match \
+length %i of independent variables." % (len(fs), len(ind_vars)))
+    else:
+        raise ValueError("User must provide either callable function or data \
+of correct length for input F.")
 
     if part == "real":
         ys = fs.real
@@ -287,6 +312,14 @@ This defaults to plotting function in x axis.  Consider providing xs instead.")
         if near_y_axis:
             ax.axvline(0, color="lightgray", linewidth=axis_linewidth)
 
+    if plot_Rhos:
+        Rhos = Slab.Rhos[1:-1]
+        msk = np.where(
+            (Rhos <= np.max(ind_vars)) * (Rhos >= np.min(ind_vars))
+        )
+        for Rho in Rhos[msk]:
+            ax.axvline(Rho, ls=":", c="lightgray", lw=Rho_linewidth)
+
     if label is not None:
         ax.plot(ind_vars, ys, label=label, **lineargs)
         ax.legend(fontsize=legend_fontsize)
@@ -301,8 +334,8 @@ def plot_field_2d(
     xs=None,
     zs=None,
     zmin=0,
-    zmax=4,
-    zref=100,
+    zmax=10,
+    zref=150,
     levels=40,
     part="real",
     figsize=None,
@@ -311,15 +344,15 @@ def plot_field_2d(
     equal=True,
     plot_Rhos=True,
     Rho_lineargs={"lw": 1, "ls": ":", "c": "k"},
-    colorbar_orientation=None,
     colorbar=True,
-    pad=0.05,
-    shrink=0.9,
-    colorbar_frac=0.1,
+    pad=0.08,
+    shrink=.95,
+    colorbar_frac=0.05,
     colorbar_aspect=15,
-    colorbar_nticks=5,
+    colorbar_nticks=7,
     anchor=(0.5, 0.5),
     colorbar_format="%.2f",
+    layout='vertical',
     **contourargs,
 ):
     """Plot field F as filled contour plot.
@@ -333,6 +366,9 @@ def plot_field_2d(
 
     plt.close("all")
 
+    if layout not in ['horizontal', 'vertical']:
+        raise ValueError('Layout must be horizontal or vertical.')
+
     if zs is None:
         zs = np.linspace(zmin, zmax, zref)
     zmin, zmax = np.min(zs), np.max(zs)
@@ -343,15 +379,20 @@ def plot_field_2d(
     lenzs, lenxs = np.ptp(zs), np.ptp(xs)
 
     if figsize is None:
-        figsize = 1 / max(lenzs, lenxs) * np.array([lenxs, lenzs]) * maxdim
+        figsize = 1 / max(lenxs, lenzs) * np.array([lenxs, lenzs]) * maxdim
+        if layout == 'horizontal':
+            figsize[0], figsize[1] = figsize[1], figsize[0]
     else:
         figsize = figsize
 
     fig, ax = plt.subplots(1, figsize=figsize)
 
     Fs = F(xs, zs, *F_args)
-
     Xs, Zs = np.meshgrid(xs, zs)
+
+    if layout == 'horizontal':
+        Fs = Fs.T
+        Xs, Zs = Zs.T, Xs.T
 
     if part == "real":
         Ys = Fs.real
@@ -372,32 +413,45 @@ def plot_field_2d(
 
     if plot_Rhos:
         msk = np.where((Rhos <= np.max(xs)) * (Rhos >= np.min(xs)))
+        if layout == 'horizontal':
+            pltfunc = ax.axhline
+        else:
+            pltfunc = ax.axvline
         for Rho in Rhos[msk]:
-            ax.axvline(
+            pltfunc(
                 Rho,
                 linestyle=Rho_lineargs["ls"],
                 linewidth=Rho_lineargs["lw"],
                 color=Rho_lineargs["c"],
             )
     if colorbar:
-        if colorbar_orientation is None:
-            if lenzs >= lenxs:
-                colorbar_orientation = "horizontal"
+        if lenzs >= lenxs:
+            if layout == 'vertical':
+                cbar_orient = 'horizontal'
+                loc = 'bottom'
             else:
-                colorbar_orientation = "vertical"
+                cbar_orient = 'vertical'
+                loc = 'left'
         else:
-            colorbar_orientation = colorbar_orientation
+            if layout == 'vertical':
+                cbar_orient = 'vertical'
+                loc = 'right'
+            else:
+                cbar_orient = 'horizontal'
+                loc = 'bottom'
+
         ticks = np.linspace(np.min(Ys), np.max(Ys), colorbar_nticks)
 
         plt.colorbar(
             axmap,
             pad=pad,
             shrink=shrink,
-            orientation=colorbar_orientation,
+            orientation=cbar_orient,
             anchor=anchor,
             fraction=colorbar_frac,
             aspect=colorbar_aspect,
             ticks=ticks,
+            location=loc,
             format=colorbar_format,
         )
     return fig, ax
@@ -508,7 +562,7 @@ def plot_field_2d_surface(
     roll=0,
     zoom=2,
     rstride=2,
-    cstride=2,
+    cstride=10,
     z_lim_factor=1,
     colorbar=False,
     pad=0.15,
@@ -595,7 +649,7 @@ def add_2d_plot_surface(
     product_func=True,
     cmap="viridis",
     rstride=2,
-    cstride=2,
+    cstride=10,
     **surfaceargs,
 ):
     """Add 3d surface plot of function F to axis."""

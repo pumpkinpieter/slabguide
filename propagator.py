@@ -1,29 +1,73 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import quad_vec
-# from warnings import warn
-from ._normalizers import OurMethod
-from ._contours import real_contour
+from .normalizers import OurMethod
+from .contours import real_contour
+from .fields import Field
+from .spacewave import space_wave_approx
 
 
-class Propagator:
+class Propagator():
     def __init__(
         self,
         Slab,
         f0=None,
-        Lx=None,
-        Rx=None,
+        window=None,
         exact_transform=None,
         exact_kwargs={},
         field_type="TE",
-        Normalization_Class=OurMethod,
         plane="Z",
+        Normalization_Class=OurMethod,
         compute_class_I=True,
         compute_class_II=True,
-        # split_prop_ev=True,
-        **integration_args,
+        integration_args={},
     ):
+        '''
+        Class for computing induced fields in slab waveguides.
 
+        Given a guide "Slab" and either input field "f0" or "exact_transform",
+        an instance of this class enables computation of the resultant field in
+        the guide by forming the radiation integral over intervals of the real
+        line. It also allows for the extension of the radiation integral to
+        the complex plane, giving users the ability to verify the leaky mode
+        representation of the radiation field.
+
+        Instantiation requires either a single variable input field 'f0' and 
+        interval of transverse domain 'window' or exact_transform function.
+
+        Parameters
+        ----------
+        Slab : Slab
+            An instance of the Slab class, representing a slab waveguide.
+        f0 : function, optional
+            Input field function. Single variable function of the tranverse
+            variable x.  The default is None.
+        window : list or array, optional
+            Support window for f0.  Outside this interval f0 is zero. Required
+            if 'f0' is provided. Default is None.
+        exact_transform : function, optional
+            Exact radiation tranform function. Single variable function of the
+            radiation variable of integration Z.  The default is None.
+        exact_kwargs : dict, optional
+            Keyword variables for exact transform. The default is {}.
+        field_type : str, optional
+            Desired field type of solution, either tranverse electric 'TE' or
+            transverse magnetic 'TM. The default is "TE".
+        plane : str, optional
+            String indicating which variable in the integral is taken as 
+            the operating variable. Options are "Beta", "Psi" and "Z". 
+            The default is "Z".
+        Normalization_Class : class, optional
+            Class for normalizing radiation modes. The default is OurMethod.
+        compute_class_I : bool, optional
+            Whether or not to compute the radiation transform using class I 
+            radiation modes. The default is True.
+        compute_class_II : bool, optional
+            Whether or not to compute the radiation transform using class I 
+            radiation modes. The default is True.
+        integration_args : dict
+            Extra arguments for scipy's quad_vec routine. Default is {}.
+        '''
         both = f0 is None and exact_transform is None
         neither = f0 is not None and exact_transform is not None
 
@@ -36,23 +80,6 @@ input field f0 or exact transform function.")
 'compute_class_II' must be set to True.'")
 
         self.Slab = Slab
-
-        if Lx is None:
-            print("No left x integral limit given (Lx). Defaulting to left \
-end of computational domain.  This will likely slow things down a lot, so it \
-is recommended to reinstantiate using more accurate bound on the support of \
-f0.")
-            self.Lx = self.Slab.Rhos[0]
-        else:
-            self.Lx = Lx
-        if Rx is None:
-            print("No right x integral limit given (Rx). Defaults to right \
-end of computational domain.  This will likely slow things down a lot, so it \
-is recommended to reinstantiate using more accurate bound on the support of \
-f0.")
-            self.Rx = self.Slab.Rhos[-1]
-        else:
-            self.Rx = Rx
 
         self.field_type = field_type
         self.ft = field_type
@@ -67,6 +94,10 @@ f0.")
 
         # Set transform function.
         if f0 is not None:
+            if window is None:
+                raise ValueError("User must give support window [Lx, Rx] \
+when providing input field f0.")
+            self.Lx, self.Rx = window[0], window[1]
             self.f0 = f0
 
             def func(C_lambda, sign=1, Coeffs=None):
@@ -75,14 +106,14 @@ f0.")
                     C_lambda,
                     sign=sign,
                     Coeffs=Coeffs,
-                    **integration_args
+                    **integration_args,
                 )
 
             self.transform = func
 
         else:
             def exact_func(C_lambda): return exact_transform(
-                C_lambda, **exact_kwargs
+                C_lambda, **exact_kwargs,
             )
             self.transform = exact_func
 
@@ -97,8 +128,36 @@ f0.")
 # True; radiation field cannot strictly be separated in this way for complex \
 # n0. Proceeding as normal but user should be aware.")
 
+        # Define Field type callable attributes
+        def Propagating(xs, zs=np.array([0]), method="simpsons"):
+            return self(xs, zs=zs, method="simpsons",
+                        portion='propagating')
+
+        self.Propagating = Field(Propagating)
+
+        def Evanescent(xs, zs=np.array([0]), method="simpsons"):
+            return self(xs, zs=zs, method="simpsons",
+                        portion='evanescent')
+
+        self.Evanescent = Field(Evanescent)
+
+        def Radiation(xs, zs=np.array([0]), method="simpsons"):
+            return self(xs, zs=zs, method="simpsons",
+                        portion='radiation')
+
+        self.Radiation = Field(Radiation)
+
+        def SDP(xs, zs=np.array([0]), method="simpsons"):
+            return self(xs, zs=zs, method="simpsons",
+                        portion='sdp')
+
+        self.SDP = Field(SDP)
+
         # Get guided field
-        self.get_guided_field(f0, Lx, Rx)
+        Guided = self.get_guided_field(f0, self.Lx, self.Rx)
+        self.Guided = Field(Guided)
+
+        self.Full = Field(self)
 
     def verify_contour(self, contour):
         if (len(set([len(contour['Cs']),
@@ -421,7 +480,7 @@ f0.")
                     splitting_contour = real_contour(L_C, Z_ev, 3)
 
                     # Add the contour.  This will split the spanning contour
-                    # and create the appropriate right bridge (once debugged).
+                    # and create the appropriate right bridge.
                     self.add_contour(splitting_contour)
 
     def mark_prop_ev(self,):
@@ -451,7 +510,7 @@ f0.")
         """
 
         def integrand(x, C, sign=sign, Coeffs=Coeffs):
-            return self.f0(x) * self.Slab.fields_vec(
+            return self.f0(x) * self.Slab.vectorized_fields(
                 C,
                 x,
                 field_type=self.field_type,
@@ -580,8 +639,13 @@ spaced spaced intervals.")
             for c in self.contours:
                 if c['radiation_type'] == 'evanescent':
                     contours.append(c)
+        elif portion == 'sdp':
+            contours = []
+            for c in self.contours:
+                if c['contour_type'] == 'sdp':
+                    contours.append(c)
         else:
-            raise ValueError("Portion must be 'full', 'radiation', \
+            raise ValueError("Portion must be 'full', 'radiation', 'sdp', \
 'propagating' or 'evanescent'.")
 
         for contour in contours:
@@ -601,18 +665,6 @@ spaced spaced intervals.")
         if portion == 'full':
             result += self.Guided(xs, zs)
         return result
-
-    def Propagating(self, xs, zs=np.array([0]), method="simpsons"):
-        return self(xs, zs=zs, method="simpsons",
-                    portion='propagating')
-
-    def Evanescent(self, xs, zs=np.array([0]), method="simpsons"):
-        return self(xs, zs=zs, method="simpsons",
-                    portion='evanescent')
-
-    def Radiation(self, xs, zs=np.array([0]), method="simpsons"):
-        return self(xs, zs=zs, method="simpsons",
-                    portion='radiation')
 
     def get_guided_field(self, f0, Lx, Rx, Nref=3000, field_type='TE',
                          return_coeffs=False, **intargs):
@@ -646,7 +698,7 @@ spaced spaced intervals.")
             Zs = self.Slab.guided_mode_propagation_constants
 
         def integrand(x, C):
-            return f0(x) * self.Slab.fields_vec(
+            return f0(x) * self.Slab.vectorized_fields(
                 C,
                 x,
                 mode_type="guided",
@@ -660,15 +712,17 @@ spaced spaced intervals.")
 
         Fs = self.Slab.guided_modes
 
-        def field(x, z): return sum([c * F(x, z)
+        def Guided(x, z): return sum([c * F(x, z)
                                      for (c, F) in zip(coeffs, Fs)])
-        self.Guided = field
 
         if return_coeffs:
             return np.array(coeffs)
+        else:
+            return Guided
 
     def plot_transform(
         self,
+        indices=None,
         figsize=(11, 4),
         part="real",
         marker="o",
@@ -688,9 +742,14 @@ spaced spaced intervals.")
         else:
             fig = plt.gcf()
 
-        for i in range(len(self.contours)):
+        if indices is None:
+            indices = slice(0, self.N_contours)
 
-            contour = self.contours[i]
+        contours = np.array(self.contours)[indices]
+
+        for i in range(len(contours)):
+
+            contour = contours[i]
             bools = [self.compute_class_I, self.compute_class_II]
 
             for idx, boolean in enumerate(bools):
@@ -758,3 +817,6 @@ spaced spaced intervals.")
             ax.legend(fontsize=legend_fontsize)
 
         return fig, ax
+
+    def space_wave_approx(self, f0, **kwargs):
+        return space_wave_approx(self.Slab, f0, **kwargs)
