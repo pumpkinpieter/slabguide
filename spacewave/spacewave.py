@@ -45,7 +45,7 @@ def dFdZ_approx(
         sign=sign,
     )
     if order == 1:
-        return lambda x, zs=0: (FdZ1(x, zs=zs) - FZ0(x, zs=zs)) / dZ
+        return (FdZ1 - FZ0) / dZ
 
     else:
         FdZ2 = Slab.fields(
@@ -58,10 +58,7 @@ def dFdZ_approx(
             sign=sign,
         )
 
-        return lambda x, zs=0: (
-            (4 * FdZ1(x, zs=zs) - 1 * FdZ2(x, zs=zs) - 3 * FZ0(x, zs=zs))
-            / (2 * dZ)
-        )
+        return (4 * FdZ1 - FdZ2 - 3 * FZ0) / (2 * dZ)
 
 
 def radiation_transform_dZ_approx(
@@ -88,6 +85,7 @@ is recommended to rerun using more accurate bound on the support of f0.")
         Rx = Slab.Rhos[-1]
 
     Fp = dFdZ_approx(
+        Slab,
         Z_base=Z_base,
         dZ=dZ,
         field_type=field_type,
@@ -109,10 +107,9 @@ is recommended to rerun using more accurate bound on the support of f0.")
 def space_wave_approx(
     Slab,
     f0,
+    window,
     Z_base=1e-7,
     dZ=1e-6,
-    Lx=None,
-    Rx=None,
     field_type="TE",
     Normalizer=None,
     compute_class_A=True,
@@ -126,19 +123,22 @@ compute_class_B must be set to True.")
     Kn = Slab.K0 * Slab.n0
     C1 = -(1 + 1j) * np.sqrt(np.pi) / 2
 
+    Lx, Rx = window[:]
+
     if compute_class_A:
-        dC_A = Slab.radiation_transform_dZ_approx(
-            f0,
-            Z_base=Z_base,
-            Lx=Lx,
-            Rx=Rx,
-            field_type=field_type,
-            Normalizer=Normalizer,
-            sign=1,
-            dZ=dZ,
-            **intargs,
-        )
+        dC_A = radiation_transform_dZ_approx(Slab,
+                                             f0,
+                                             Z_base=Z_base,
+                                             Lx=Lx,
+                                             Rx=Rx,
+                                             field_type=field_type,
+                                             Normalizer=Normalizer,
+                                             sign=1,
+                                             dZ=dZ,
+                                             **intargs,
+                                             )
         dF_A = dFdZ_approx(
+            Slab,
             Z_base,
             dZ=dZ,
             sign=1,
@@ -148,18 +148,19 @@ compute_class_B must be set to True.")
 
     if compute_class_B:
 
-        dC_B = Slab.radiation_transform_dZ_approx(
-            f0,
-            Z_base=Z_base,
-            Lx=Lx,
-            Rx=Rx,
-            field_type=field_type,
-            Normalizer=Normalizer,
-            sign=-1,
-            dZ=dZ,
-            **intargs,
-        )
+        dC_B = radiation_transform_dZ_approx(Slab,
+                                             f0,
+                                             Z_base=Z_base,
+                                             Lx=Lx,
+                                             Rx=Rx,
+                                             field_type=field_type,
+                                             Normalizer=Normalizer,
+                                             sign=-1,
+                                             dZ=dZ,
+                                             **intargs,
+                                             )
         dF_B = dFdZ_approx(
+            Slab,
             Z_base,
             dZ=dZ,
             sign=-1,

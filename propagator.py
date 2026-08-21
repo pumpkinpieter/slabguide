@@ -1,9 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import quad_vec
-from warnings import warn
+# from warnings import warn
 from .normalizers import OurMethod
-from .contours import real_contour
+from .contours import real_contour, sdp_contour
 from .fields import Field
 from .spacewave import space_wave_approx
 
@@ -158,7 +158,7 @@ when providing input field f0.")
         Guided = self.get_guided_field(f0, self.Lx, self.Rx)
         self.Guided = Field(Guided)
 
-        self.Full = Field(self)
+        self.Full = Field(self.__call__)
 
     def verify_contour(self, contour):
         if (len(set([len(contour['Cs']),
@@ -220,7 +220,7 @@ when providing input field f0.")
         # Split up contour into new dictionaries
         Ds = [{} for i in range(len(split_indices)+1)]
         for key, val in contour.items():
-            if key == 'contour_type' or key == 'radiation_type':
+            if key in ['contour_type', 'radiation_type', 'sign']:
                 for D in Ds:
                     D[key] = contour[key]
                 continue
@@ -267,6 +267,11 @@ when providing input field f0.")
             if ct1['radius'] != ct2['radius']:
                 return False
 
+        # SDP contours must have same sign
+        if ct1 == 'sdp':
+            if contour1['sign'] != contour2['sign']:
+                return False
+
         return True
 
     def check_overlap(self, new_contour):
@@ -285,12 +290,12 @@ when providing input field f0.")
         """
 
         new_contour_type = new_contour['contour_type']
-        new_Cs = new_contour['Cs']
 
         same_contour_flag = False
         index_shift = 0
 
         for idx in range(len(self.contours)):
+            new_Cs = new_contour['Cs']
 
             contour = self.contours[idx + index_shift]
 
@@ -298,8 +303,9 @@ when providing input field f0.")
             if not self.overlap_possible(contour, new_contour):
                 continue
 
-            if new_contour_type == 'real':
-                old_Cs = contour['Cs']
+            if new_contour_type in ['real', 'sdp']:
+                old_Cs = contour['Cs'].real
+                new_Cs = new_Cs.real
 
                 # Check if contour already exists
                 if len(new_Cs) == len(old_Cs) and np.all(new_Cs == old_Cs):
@@ -353,11 +359,19 @@ when providing input field f0.")
 
                 # Add bridging contours if necessary
                 if L > 0 and old_Cs[L-1] < L_new:
-                    bridge_contour = real_contour(old_Cs[L-1], L_new, 3)
+                    if new_contour_type == 'sdp':
+                        bridge_contour = sdp_contour(self.Slab, old_Cs[L-1],
+                                                     L_new, 3)
+                    else:
+                        bridge_contour = real_contour(old_Cs[L-1], L_new, 3)
                     self.add_contour(bridge_contour, check_overlap=True)
                     # index_shift += 1
                 if len(old_Cs) > R and R_new < old_Cs[R]:
-                    bridge_contour = real_contour(R_new, old_Cs[R], 3)
+                    if new_contour_type == 'sdp':
+                        bridge_contour = sdp_contour(self.Slab, R_new,
+                                                     old_Cs[R], 3)
+                    else:
+                        bridge_contour = real_contour(R_new, old_Cs[R], 3)
                     self.add_contour(bridge_contour, check_overlap=True)
                     # index_shift += 1
 
@@ -471,10 +485,11 @@ when providing input field f0.")
                     # Simpson's rule
                     L = np.where(Cs < Z_ev)[0][-1]
                     if L <= 2:
-                        L = 0
+                        L_C = Cs[0]
                     elif L % 2 == 0:
-                        L -= 1
-                    L_C = Cs[L-1]
+                        L_C = Cs[L-2]
+                    else:
+                        L_C = Cs[L-1]
 
                     # Create contour going from that point to Z_evanescent
                     # (again conforming to Simpson's rule).
@@ -693,8 +708,8 @@ spaced spaced intervals.")
             mode).
         """
         if self.Slab.Z_max_guided.imag == 0:
-            warn("Structure does not support guided modes.  Setting guided \
-field to zero function.")
+            #             warn("Structure does not support guided modes.  Setting guided \
+            # field to zero function.")
             return lambda x, z: 0
         try:
             Zs = self.Slab.guided_prop_constants
@@ -823,5 +838,5 @@ field to zero function.")
 
         return fig, ax
 
-    def space_wave_approx(self, f0, **kwargs):
-        return space_wave_approx(self.Slab, f0, **kwargs)
+    def space_wave_approx(self, f0, window, **kwargs):
+        return space_wave_approx(self.Slab, f0, window, **kwargs)

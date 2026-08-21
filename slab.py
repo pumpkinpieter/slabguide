@@ -1481,6 +1481,6 @@ list for attribute guided_modes and None  guided_regional_coeffs.")
         return eigenvalue_plot_1d(self, contour, **kwargs)
 
 
-# A = SlabGuide(ns=[0], Ts=[np.pi], xrefs=[5], center=False)
+A = Slab()
 
 # A.transmission_matrix(10j, derivate=True)

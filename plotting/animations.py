@@ -5,7 +5,7 @@ from time import time
 
 
 def animate_field_1d(
-    slab,
+    Slab,
     F,
     name,
     *F_args,
@@ -32,7 +32,7 @@ def animate_field_1d(
 
     # Make at least one of xs and zs contain data
     if xs is None and zs is None:  # Default to plotting xs at z = 0
-        xs = slab.all_Xs
+        xs = Slab.all_Xs
         zs = np.array([0])
 
     elif xs is not None and zs is None:
@@ -89,7 +89,7 @@ def animate_field_1d(
         ax.plot(ind_vars, ys, color=color, **lineargs)
 
         if plot_Rhos:
-            for Rho in slab.Rhos[1:-1]:
+            for Rho in Slab.Rhos[1:-1]:
                 ax.axvline(Rho, linestyle=":", color="lightgray")
 
         if plot_axis:
@@ -97,22 +97,22 @@ def animate_field_1d(
             ax.axvline(0, color="lightgray")
 
         if plot_regions:
-            ns = slab.ns
-            for i in range(len(slab.Rhos) - 1):
+            ns = Slab.ns
+            for i in range(len(Slab.Rhos) - 1):
                 n = ns[i]
                 rcolor = 1 - 2 / np.pi * np.arctan(contrast * (n - 1))
                 hcolor = max(
                     0.9 - 2 / np.pi * np.arctan(contrast * (n - 1)), 0
                 )
                 plt.axvspan(
-                    slab.Rhos[i],
-                    slab.Rhos[i + 1],
+                    Slab.Rhos[i],
+                    Slab.Rhos[i + 1],
                     color=str(rcolor),
                     linewidth=0,
                 )
                 plt.axvspan(
-                    slab.Rhos[i],
-                    slab.Rhos[i + 1],
+                    Slab.Rhos[i],
+                    Slab.Rhos[i + 1],
                     fill=None,
                     linewidth=0,
                     hatch=hatch,
@@ -125,7 +125,7 @@ def animate_field_1d(
 
 
 def animate_field_2d(
-    slab,
+    Slab,
     F,
     filename,
     *F_args,
@@ -140,7 +140,7 @@ def animate_field_2d(
     levels=30,
     part="real",
     figsize=None,
-    maxdim=9,
+    maxdim=6,
     equal=True,
     plot_Rhos=True,
     colorbar=False,
@@ -162,7 +162,7 @@ def animate_field_2d(
         zs = np.linspace(zmin, zmax, zref)
 
     if xs is None:
-        xs = slab.all_Xs  # doesn't duplicate endpoints
+        xs = Slab.all_Xs
 
     lenzs, lenxs = np.ptp(zs), np.ptp(xs)
 
@@ -222,7 +222,7 @@ def animate_field_2d(
         )
 
         if plot_Rhos:
-            for Rho in slab.Rhos[1:-1]:
+            for Rho in Slab.Rhos[1:-1]:
                 ax.axvline(Rho, linestyle=":", linewidth=1, color="k")
         if colorbar and k == 0:
             plt.colorbar(
@@ -242,12 +242,12 @@ def animate_field_2d(
     elif ext == "gif":
         writer = "pillow"
     animation.save(
-        filename + "." + ext, fps=fps, screen_dpi=screen_dpi, writer=writer
+        filename + "." + ext, fps=fps, dpi=screen_dpi, writer=writer
     )
 
 
 def animate_field_2d_surface(
-    slab,
+    Slab,
     F,
     filename,
     *F_args,
@@ -284,7 +284,7 @@ def animate_field_2d_surface(
         zs = np.linspace(zmin, zmax, zref)
 
     if xs is None:
-        xs = slab.all_Xs  # doesn't duplicate endpoints
+        xs = Slab.all_Xs  # doesn't duplicate endpoints
 
     lenzs, lenxs = np.ptp(zs), np.ptp(xs)
 
@@ -370,7 +370,7 @@ def animate_field_2d_surface(
     print("Starting save:")
     a = time()
     animation.save(
-        filename + "." + ext, fps=fps, screen_dpi=screen_dpi, writer=writer
+        filename + "." + ext, fps=fps, dpi=screen_dpi, writer=writer
     )
     b = time()
     print(
@@ -388,7 +388,7 @@ def animate_field_2d_surface(
 
 
 def radiation_mode_beta_animation(
-    slab,
+    Slab,
     name,
     beta_range=None,
     imag_type=False,
@@ -416,7 +416,7 @@ def radiation_mode_beta_animation(
     N = fps * secs
 
     if beta_range is None:
-        beta_range = [-slab.K_low, slab.K_low]
+        beta_range = [-Slab.K_low, Slab.K_low]
 
     beta_range = np.linspace(beta_range[0], beta_range[1], N)
 
@@ -426,7 +426,7 @@ def radiation_mode_beta_animation(
 
     # Animate
     for beta in beta_range:
-        F = slab.fields(
+        F = Slab.fields(
             beta,
             c0=c0,
             field_type=field_type,
@@ -437,13 +437,13 @@ def radiation_mode_beta_animation(
 
         if not single_function:
             fs = []
-            for f, Xs in zip(F, slab.Xs):
+            for f, Xs in zip(F, Slab.Xs):
                 fs.append(f(Xs))
             ys = np.concatenate(fs)
-            all_X = np.concatenate(slab.Xs)
+            all_X = np.concatenate(Slab.Xs)
         else:
-            ys = F(slab.all_Xs)
-            all_X = slab.all_Xs
+            ys = F(Slab.all_Xs)
+            all_X = Slab.all_Xs
 
         if part == "real":
             ys = ys.real
@@ -455,14 +455,14 @@ def radiation_mode_beta_animation(
             raise ValueError("Part must be real, imag or norm.")
         ax.plot(all_X, ys, color=color, **lineargs)
         if plot_Rhos:
-            Rhos = slab.Rhos[1:-1]
+            Rhos = Slab.Rhos[1:-1]
             for Rho in Rhos:
                 ax.axvline(Rho, linestyle=":", color="lightgray")
         if plot_axis:
             ax.axhline(0, color="lightgray")
             ax.axvline(0, color="lightgray")
         if plot_regions:
-            ns = slab.ns
+            ns = Slab.ns
             for i in range(len(Rhos) - 1):
                 n = ns[i]
                 rcolor = 1 - 2 / np.pi * np.arctan(contrast * (n - 1))
@@ -487,7 +487,7 @@ def radiation_mode_beta_animation(
 
 
 def radiation_mode_Z_animation(
-    slab,
+    Slab,
     name,
     Z_range=None,
     field_type="TE",
@@ -515,13 +515,13 @@ def radiation_mode_Z_animation(
     N = fps * secs
 
     if Z_range is None:
-        Z_range = [-2 * slab.Z_evanescent, 2 * slab.Z_evanescent]
+        Z_range = [-2 * Slab.Z_evanescent, 2 * Slab.Z_evanescent]
 
     Z_range = np.linspace(Z_range[0], Z_range[1], N)
 
     # Animate
     for Z in Z_range:
-        F = slab.fields_Z(
+        F = Slab.fields_Z(
             Z,
             c0=c0,
             field_type=field_type,
@@ -533,13 +533,13 @@ def radiation_mode_Z_animation(
 
         if not single_function:
             fs = []
-            for f, Xs in zip(F, slab.Xs):
+            for f, Xs in zip(F, Slab.Xs):
                 fs.append(f(Xs))
             ys = np.concatenate(fs)
-            all_X = np.concatenate(slab.Xs)
+            all_X = np.concatenate(Slab.Xs)
         else:
-            ys = F(slab.all_Xs)
-            all_X = slab.all_Xs
+            ys = F(Slab.all_Xs)
+            all_X = Slab.all_Xs
 
         if part == "real":
             ys = ys.real
@@ -551,14 +551,14 @@ def radiation_mode_Z_animation(
             raise ValueError("Part must be real, imag or norm.")
         ax.plot(all_X, ys, color=color, **lineargs)
         if plot_Rhos:
-            Rhos = slab.Rhos[1:-1]
+            Rhos = Slab.Rhos[1:-1]
             for Rho in Rhos:
                 ax.axvline(Rho, linestyle=":", color="lightgray")
         if plot_axis:
             ax.axhline(0, color="lightgray")
             ax.axvline(0, color="lightgray")
         if plot_regions:
-            ns = slab.ns
+            ns = Slab.ns
             for i in range(len(Rhos) - 1):
                 n = ns[i]
                 rcolor = 1 - 2 / np.pi * np.arctan(contrast * (n - 1))
@@ -583,7 +583,7 @@ def radiation_mode_Z_animation(
 
 
 def animate_propagation_constants(
-    slab,
+    Slab,
     rmin,
     rmax,
     imin,
@@ -632,11 +632,11 @@ def animate_propagation_constants(
     av_plot_time = 0
 
     for k, wl in enumerate(wls):
-        slab.wl = wl
+        Slab.wl = wl
 
         print("Plotting for frame %i/%i" % (k + 1, Nwl))
         s = time()
-        fig, ax, im = slab.determinant_plot(
+        fig, ax, im = Slab.determinant_plot(
             rmin,
             rmax,
             imin,

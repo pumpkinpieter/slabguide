@@ -118,7 +118,8 @@ def sdp_contour(Slab, x_start, x_end, N, s_start=0, s_end=1, sdp_sign=-1,
     dxds = (x_end - x_start) / (s_end - s_start) * np.ones(N)
     dCdS = dxds * Slab.sdp_derivative(xs, sdp_sign=sdp_sign, plane=plane)
 
-    return {"Cs": Cs, "dCdS": dCdS, "Ss": Ss, "contour_type": "sdp"}
+    return {"Cs": Cs, "dCdS": dCdS, "Ss": Ss, "contour_type": "sdp",
+            'sign': sdp_sign}
 
 
 def vertical_contour(x, y_start, y_end, N, s_start=0, s_end=1):

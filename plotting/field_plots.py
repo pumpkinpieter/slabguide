@@ -336,6 +336,8 @@ def plot_field_2d(
     zmin=0,
     zmax=10,
     zref=150,
+    xstride=10,
+    zstride=1,
     levels=40,
     part="real",
     figsize=None,
@@ -376,6 +378,9 @@ def plot_field_2d(
     if xs is None:
         xs = Slab.all_Xs
 
+    xs = xs[0: -1: xstride]
+    zs = zs[0: -1: zstride]
+
     lenzs, lenxs = np.ptp(zs), np.ptp(xs)
 
     if figsize is None:
@@ -408,6 +413,9 @@ def plot_field_2d(
     )
     if equal:
         ax.set_aspect("equal")
+
+    if layout == 'horizontal':
+        ax.set_ylim(ax.get_ylim()[::-1])
 
     Rhos = Slab.Rhos[1:-1]
 
@@ -467,6 +475,8 @@ def add_2d_plot(
     zmin=0,
     zmax=10,
     zref=100,
+    xstride=10,
+    zstride=1,
     part="real",
     cmap="viridis",
     levels=40,
@@ -492,6 +502,9 @@ def add_2d_plot(
 
     if xs is None:
         xs = Slab.all_Xs
+
+    xs = xs[0: -1: xstride]
+    zs = zs[0: -1: zstride]
 
     Fs = F(xs, zs, *F_args)
 
