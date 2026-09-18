@@ -106,7 +106,10 @@ class OurMethod:
         if len(self.Slab.ns) == 1:
             M0 = np.ones((2, 1))
             M0[-1] *= int(sign)
-            return M0 / (2 * np.sqrt(np.pi))
+            denom = 2 * np.sqrt(np.pi)
+            if int(sign) == -1:
+                denom *= 1j
+            return M0 / denom
 
         M0 = np.zeros(C.shape + (2, 1), dtype=complex)
         M = self.Slab.transmission_matrix(

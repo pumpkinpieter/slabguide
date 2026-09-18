@@ -7,8 +7,29 @@ Created on Sat Feb  8 14:16:45 2025
 """
 import numpy as np
 import matplotlib.pyplot as plt
-from warnings import warn
 import json
+
+
+def copy_doc(copy_func):
+    """Copies the doc string of the given function to another. 
+    This function is intended to be used as a decorator.
+
+    .. code-block:: python3
+
+        def foo():
+            '''This is a foo doc string'''
+            ...
+
+        @copy_doc(foo)
+        def bar():
+            ...
+    """
+
+    def wrapped(func):
+        func.__doc__ = copy_func.__doc__
+        return func
+
+    return wrapped
 
 
 def plot_points(Cs, m="o", ms=5, ax=None, **kwargs):
@@ -222,300 +243,97 @@ log_abs=False.')
     plt.legend(fontsize=legend_fontsize)
 
 
-# def plotlogf(f, rmin, rmax, imin, imax, fkwargs={}, title='',
-#              levels=25, truncate=False, h=2, equal=False,
-#              colorbar=True, rref=20, iref=20, figsize=(12, 6),
-#              log_off=False, loop=False, three_D=False,
-#              cmap='viridis', phase=False, xy_plane=False,
-#              elev=50, roll=0, azim=-90, zoom=1.5,
-#              abs_off=False, part='norm', facecolor='gray',
-#              rstride=2, cstride=2, axis_off=True, grid=True,
-#              z_lims=None, **contourargs):
-#     """Create contour plot of complex function f on given range."""
-
-#     plt.close('all')
-
-#     if abs_off and not log_off:
-#         log_off = True
-#         warn("Setting log_off=True since you are using abs_off=True.")
-
-#     Xr = np.linspace(rmin, rmax, num=rref)
-#     Xi = np.linspace(imin, imax, num=iref)
-#     xr, xi = np.meshgrid(Xr, Xi)
-
-#     if not xy_plane:
-#         zs = xr + 1j * xi
-#     if not loop:
-#         if not xy_plane:
-#             fx = f(zs, **fkwargs)
-#         else:
-#             fx = f(xr, xi, **fkwargs)
-
-#     else:
-#         if not xy_plane:
-#             fx = np.zeros_like(zs)
-#             for i in range(zs.shape[0]):
-#                 for j in range(zs.shape[1]):
-#                     fx[i, j] = f(zs[i, j], **fkwargs)
-#         else:
-#             fx = np.zeros_like(xr)
-#             for i in range(zs.shape[0]):
-#                 for j in range(zs.shape[1]):
-#                     fx[i, j] = f(xr[i, j], xi[i, j], **fkwargs)
-
-#     if truncate:
-#         fx[np.abs(fx) > h] = h  # ignore large values to focus on roots
-
-#     if phase:
-#         if xy_plane:
-#             raise ValueError('Working with xy_plane=True; output assumed real, \
-# hence has no phase.  If complex output desired set xy_plane=False (default).')
-#         ys = np.angle(fx)
-#     else:
-#         if xy_plane:
-#             ys = fx
-#         else:
-#             if part == 'real':
-#                 ys = fx.real
-#                 if not abs_off:
-#                     ys = np.abs(ys)
-#             elif part == 'imag':
-#                 ys = fx.imag
-#                 if not abs_off:
-#                     ys = np.abs(ys)
-#             elif part == 'norm':
-#                 ys = np.abs(fx)
-#             else:
-#                 raise ValueError("Must choose norm, real or imag part.")
-#             # ys = np.abs(fx)
-
-#     if not log_off and phase:
-#         raise ValueError("Need log_off when phase is turned on.")
-
-#     if not log_off:
-#         ys = np.log(np.abs(ys))  # abs only needed if xy_plane=True
-
-#     fig = plt.figure(figsize=figsize)
-
-#     if three_D:
-#         ax = fig.add_subplot(projection='3d')
-#         lims = (np.ptp(Xr), np.ptp(Xi), min(np.ptp(Xr), np.ptp(Xi)))
-#         ax.set_box_aspect(lims, zoom=zoom)
-#         if z_lims is not None:
-#             z_min, z_max = z_lims[:]
-#             ax.set_zlim(z_min, z_max)
-#         if axis_off:
-#             ax.set_axis_off()
-#         ax.view_init(elev, azim, roll)
-
-#         im = ax.plot_surface(xr, xi, ys, clip_on=False, cmap=cmap,
-#                              rstride=rstride, cstride=cstride,
-#                              **contourargs)
-
-#     else:
-#         ax = fig.add_subplot()
-#         ax.grid(grid)
-#         ax.set_facecolor(facecolor)
-#         im = ax.contour(xr, xi, ys, levels=levels, **contourargs)
-
-#     if equal:
-#         ax.axis('equal')
-
-#     plt.title(title)
-#     if colorbar:
-#         plt.colorbar(im, pad=.05, orientation='vertical',
-#                      anchor=(.5, 1), fraction=.15)
-#     # return fig, ax
-
-
-# def plotlogf_real(f, x_min, x_max, fkwargs={}, n=1000, figsize=(10, 4),
-#                   level=np.e, log_off=False, truncate=False, height=2,
-#                   bounds=None, loop=False, part='norm', abs_off=False,
-#                   return_xyf=False, grid=False, plot_axis=True):
-#     """Plot (possibly complex) f on given real valued input range."""
-#     plt.close('all')
-#     if abs_off and not log_off:
-#         log_off = True
-#         warn("Setting log_off=True since you are using abs_off=True.")
-
-#     xs = np.linspace(x_min, x_max, num=n)
-#     if loop:
-#         fx = np.zeros_like(xs, dtype=complex)
-#         for i in range(len(xs)):
-#             fx[i] = f(xs[i], **fkwargs)
-#         if part == 'real':
-#             fx = fx.real
-#         elif part == 'imag':
-#             fx = fx.imag
-#         elif part == 'norm':
-#             fx = np.abs(fx)
-#         else:
-#             raise ValueError("Must choose norm, real or imag part.")
-#     else:
-#         fx = np.array(f(xs, **fkwargs), dtype=complex)
-#         if part == 'real':
-#             fx = fx.real
-#         elif part == 'imag':
-#             fx = fx.imag
-#         elif part == 'norm':
-#             fx = np.abs(fx)
-#         else:
-#             raise ValueError("Must choose norm, real or imag part.")
-
-#     fig, ax = plt.subplots(1, figsize=figsize)
-
-#     if log_off:
-#         if truncate:
-#             fx[np.abs(fx) > height] = height  # truncate to height
-#         if abs_off:
-#             ys = fx
-#             # ax.plot([xs[0], xs[-1]], [0, 0], linewidth=1.5, color='k')
-#         else:
-#             ys = np.abs(fx)
-#         ax.plot(xs, ys)
-#     else:
-#         ys = np.zeros_like(fx, dtype=float)
-#         ys[np.abs(fx) >= level] = np.log(np.abs(fx[np.abs(fx) >= level]))
-#         ys[np.abs(fx) < level] = np.abs(
-#             fx[np.abs(fx) < level]) * (np.log(level) / level)
-#         if truncate:
-#             ys[np.abs(ys) > height] = height
-#         ax.plot(xs, ys)
-
-#     bottom, top = plt.ylim()
-#     if not abs_off:
-#         ax.set_ylim(0, top)
-
-#     if bounds is not None:
-#         l, r = bounds[:]
-#         ax.plot([l, l], [0, top], color='orange', linestye=':', linewidth=.75)
-#         ax.plot([r, r], [0, top], color='orange', linestye=':', linewidth=.75)
-
-#     ax.grid(grid)
-
-#     if plot_axis:
-#         plt.axhline(0, color='lightgray')
-#         plt.axvline(0, color='lightgray')
-
-#     if return_xyf:
-#         return xs, ys, fx
-
-#     return fig, ax
-
-
-# def plotlogf_imag(f, im_min, im_max, fkwargs={}, n=1000, figsize=(10, 4),
-#                   level=np.e, log_off=False, truncate=False, height=2,
-#                   bounds=None, loop=False, part='real', abs_off=False,
-#                   grid=False, return_xyf=False, plot_x_axis=True,
-#                   plot_y_axis=True):
-#     """Plot (possibly complex) f on given pure imaginary valued input range."""
-
-#     if abs_off and not log_off:
-#         raise ValueError("Need to set log_off=True if using abs_off=True.")
-
-#     xs = np.linspace(im_min, im_max, num=n)
-#     ims = 1j * xs
-
-#     if loop:
-#         fx = np.zeros_like(xs, dtype=complex)
-#         for i in range(len(xs)):
-#             fx[i] = f(ims[i], **fkwargs)
-#         if part == 'real':
-#             fx = fx.real
-#         elif part == 'imag':
-#             fx = fx.imag
-#         elif part == 'norm':
-#             fx = np.abs(fx)
-#         else:
-#             raise ValueError("Must choose norm, real or imag part.")
-#     else:
-#         fx = np.array(f(ims, **fkwargs), dtype=complex)
-#         if part == 'real':
-#             fx = fx.real
-#         elif part == 'imag':
-#             fx = fx.imag
-#         elif part == 'norm':
-#             fx = np.abs(fx)
-#         else:
-#             raise ValueError("Must choose norm, real or imag part.")
-
-#     fig = plt.figure(figsize=figsize)
-#     ax = plt.gca()
-
-#     if log_off:
-#         if truncate:
-#             fx[np.abs(fx) > height] = height  # truncate to height
-#         if abs_off:
-#             ys = fx
-#             ax.plot([xs[0], xs[-1]], [0, 0], linewidth=1.5, color='k')
-#         else:
-#             ys = np.abs(fx)
-#         ax.plot(xs, ys)
-#     else:
-#         ys = np.zeros_like(fx, dtype=float)
-#         ys[np.abs(fx) >= level] = np.log(np.abs(fx[np.abs(fx) >= level]))
-#         ys[np.abs(fx) < level] = np.abs(
-#             fx[np.abs(fx) < level]) * (np.log(level) / level)
-#         if truncate:
-#             ys[np.abs(ys) > height] = height
-#         ax.plot(xs, ys)
-
-#     bottom, top = plt.ylim()
-#     if not abs_off:
-#         ax.set_ylim(0, top)
-
-#     if plot_x_axis:
-#         ax.axhline(0, linewidth=.7, color='gray')
-#     if plot_y_axis:
-#         ax.axvline(0, linewidth=.7, color='gray')
-#     if bounds is not None:
-#         l, r = bounds[:]
-#         ax.plot([l, l], [0, top], color='orange', linestye=':', linewidth=.75)
-#         ax.plot([r, r], [0, top], color='orange', linestye=':', linewidth=.75)
-#     ax.grid(grid)
-#     if return_xyf:
-#         return xs, ys, fx
-#     return fig, ax
-
-
 class ThreeJSMeshSaver():
+
     def __init__(self, Xs, Zs):
+        """
+        A class for saving grid data for ThreeJS meshes.
+
+        Takes the results of np.meshgrid(xs, zs), where, xs and zs are 1d numpy
+        arrays of points in the transverse and longitudinal axes.  
+
+        Parameters
+        ----------
+        Xs : ndarray
+            2D array of x values for base mesh.
+        Zs : ndarray
+            2D array of z values for base mesh.
+        """
+
+        # Set base mesh arrays as attributes
         self.Xs = Xs
         self.Zs = Zs
-        self.trig_indices = self._get_triangle_indices(Xs)
-        self.base_vertices = self._get_base_vertices(Xs, Zs)
 
-    def _get_triangle_indices(self, mesh_array):
-        '''Get triangle index list for three js mesh formation via indexed buffer
-        geometry.'''
-        if len(mesh_array.shape) <= 1:
-            raise ValueError('Provide meshgrid array as input.')
-        Nz, Nx = mesh_array.shape[0], mesh_array.shape[1]
-        l_inds = Nx * Nz
-        indices = np.arange(0, l_inds).reshape((Nx, Nz)).T  # Note transpose
-        # Note transpose and index switch due to transpose
-        fbases = indices[:Nz-1, :Nx-1].T.flatten()
-        f1 = np.array([[i, i+Nz, i+1] for i in fbases], dtype=int)
-        f2 = np.array([[i+1, i+Nz, i+Nz+1] for i in fbases], dtype=int)
-        return np.concatenate((f1, f2))
+        # Get total number of points in base mesh arrays
+        self.L = self.Xs.shape[0] * self.Xs.shape[1]
 
-    def _get_base_vertices(self, Xs, Zs):
-        '''Get vertices of triangles with zero height (y component in three.js).'''
-        if Xs.shape != Zs.shape:
-            raise ValueError(
-                'Provide meshgrid arrays (ie Xs, Zs = np.meshgrid(xs,zs)) as \
-    inputs.')
-        Base = np.array([Xs, np.zeros_like(Xs), Zs], dtype=float)
-        L = Xs.shape[0] * Xs.shape[1]
-        base_vertices = Base.T.reshape((L, 3))
+        # Compute triangle index list and base vertex array
+        self.trig_indices = self._get_triangle_indices()
+        self.base_vertices = self._get_base_vertices()
+
+    def _get_triangle_indices(self):
+        """
+        Get list of indices to triangulate base plane for ThreeJS mesh
+        formation via indexed buffer geometry.
+
+        Returns
+        -------
+        ndarray
+            Array of integers determining triangles of base plane.
+        """
+        # Get shape of base plane discretization
+        Nz, Nx = self.Xs.shape[0], self.Xs.shape[1]
+
+        # Form index list of base mesh points
+        indices = np.arange(0, Nz * Nx, dtype=np.uint32).reshape((Nz, Nx))
+
+        # Get lower left index point of each rectangle in base mesh
+        fbases = indices[:Nz-1, :Nx-1].flatten()
+        Nb = len(fbases)
+
+        # Get lower right triangles (vectorized)
+        f1 = np.array([indices[:Nz-1, :Nx-1],
+                       indices[:Nz-1, 1:Nx],
+                       indices[1:Nz, 1:Nx]],
+                      dtype=np.uint32).transpose(1, 2, 0).reshape(Nb, 3)
+
+        # f1 = np.array([[i, i+1, i+1+Nx] for i in fbases], dtype=np.uint32)
+
+        # Get upper left triangles (vectorized)
+        f2 = np.array([indices[:Nz-1, :Nx-1],
+                       indices[1:Nz, 1:Nx],
+                       indices[1:Nz, :Nx-1]],
+                      dtype=np.uint32).transpose(1, 2, 0).reshape(Nb, 3)
+        # f2 = np.array([[i, i+1+Nx, i+Nx] for i in fbases], dtype=np.uint32)
+
+        # Concatenate arrays and return
+        f = np.concatenate((f1, f2), dtype=np.uint32)
+
+        return f
+
+    def _get_base_vertices(self):
+        """
+        Get vertices of triangles with zero height (y component in three.js).
+
+        Returns array with correct shape for interpretation by
+        IndexedBufferedGeometry in ThreeJS.
+
+        Returns
+        -------
+        ndarray
+            Array of base vertices with zero y component, shape is self.L x 3.
+        """
+
+        Base = np.array([self.Xs, np.zeros_like(self.Xs), self.Zs],
+                        dtype=np.float32)
+        base_vertices = Base.transpose(1, 2, 0).reshape((self.L, 3))
         return base_vertices
 
     def create_height_array_from_complex(self, heights):
         '''Get data for height from complex ys input (needs to be formatted as
         list: [ys[0].real, ys[0].imag, ys[1].real, ys[1].imag, ... ].'''
-        L = self.Xs.shape[0] * self.Xs.shape[1]
-        Heights = np.array([heights.real, heights.imag], dtype=float)
-        heights = Heights.T.reshape((L, 2))
+        Heights = np.array([heights.real, heights.imag], dtype=np.float32)
+        heights = Heights.transpose(1, 2, 0).reshape((self.L, 2))
         return heights
 
     def save_as_json(self, filepath, array):

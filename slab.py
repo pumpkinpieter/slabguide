@@ -12,13 +12,16 @@ import numpy as np
 from .normalizers import OurMethod
 from .sdp import sdp, sdp_derivative
 from .fields import Field
+from .modefinding import (get_guided_propagation_constants, get_guided_modes,
+                          get_leaky_propagation_constants, get_leaky_modes)
 from .plotting import (plot_field_1d, plot_field_2d, add_1d_plot, add_2d_plot,
                        plot_field_2d_surface, add_2d_plot_surface,
                        eigenvalue_plot, eigenvalue_plot_1d, plot_points,
                        plot_refractive_index)
+from .utilities import copy_doc
 from copy import deepcopy
 from warnings import warn
-from scipy.optimize import newton, minimize
+from scipy.optimize import minimize
 
 
 class Slab:
@@ -86,6 +89,7 @@ class Slab:
         self.Rhos = np.array([sum(self.Ts[:i]) for i in range(len(self.Ts)
                                                               + 1)])
         self.N_regions = len(self.Rhos) - 1
+
         if xrefs is None:
             f = np.array(ns) / np.min(np.array(ns))
             k = 10
@@ -124,6 +128,9 @@ class Slab:
         # Check if guide is symmetric (not yet utilized but plan to use this to
         # reduce computational load in calculating transmission matrix)
         self.is_symmetric = self.check_symmetric()
+
+        # Set empty leaky mode prop constant list
+        self.leaky_prop_constants = []
 
         # Define base regional models
         # def M(x, Z, i, **kwargs):
@@ -384,7 +391,7 @@ try again.")
 
     def region_index(self, xs, continuity='left'):
         """Return region indices in which (non-dimensional) xs lie.  Indexing
-        is based on left-continuity, so if x is in (rho_i, rho_i+1) it gets
+        is based on left-continuity, so if x = rho_i+1 it gets
         index i.  Points outside of domain on left get index 0, on right get
         index len(Rhos)-1.  Vectorized."""
         try:
@@ -957,8 +964,8 @@ try again.")
         up_to_region=-1,
         rounding=12,
         manual_coeffs=None,
-        even=False,
-        odd=False,
+        # even=False,
+        # odd=False,
     ):
         """Return field coefficients given propagation constant C."""
 
@@ -972,11 +979,11 @@ try again.")
             raise ValueError("Mode type must be 'guided', 'leaky' or \
 'radiation.")
 
-        if even and odd:
-            raise ValueError("Only one of even and odd can be set to true")
+        # if even and odd:
+        #     raise ValueError("Only one of even and odd can be set to true")
 
-        if (even or odd) and (not self.is_symmetric):
-            raise ValueError("Non-symmetric guides don't have even/odd modes.")
+        # if (even or odd) and (not self.is_symmetric):
+        #     raise ValueError("Non-symmetric guides don't have even/odd modes.")
 
         # Single scalar inputs need to be given at least a single dimension
         try:
@@ -1072,19 +1079,19 @@ try again.")
             C.shape + (2, len(Rhos) + up_to_region), dtype=complex
         )
 
-        # Do this after setting array for Coeffs to keep it correct shape
-        if even or odd:
-            up_to_region = int(len(self.Rhos)/2) - len(Rhos) + 1
+        # # Do this after setting array for Coeffs to keep it correct shape
+        # if even or odd:
+        #     up_to_region = int(len(self.Rhos)/2) - len(Rhos) + 1
 
         # set first vectors in each coefficient array
         Coeffs[..., :, 0] = M0[..., :, 0]
 
-        if even:
-            Coeffs[..., 0, -1] = M0[..., 1, 0]
-            Coeffs[..., 1, -1] = M0[..., 0, 0]
-        if odd:
-            Coeffs[..., 0, -1] = -M0[..., 1, 0]
-            Coeffs[..., 1, -1] = -M0[..., 0, 0]
+        # if even:
+        #     Coeffs[..., 0, -1] = M0[..., 1, 0]
+        #     Coeffs[..., 1, -1] = M0[..., 0, 0]
+        # if odd:
+        #     Coeffs[..., 0, -1] = -M0[..., 1, 0]
+        #     Coeffs[..., 1, -1] = -M0[..., 0, 0]
 
         Ztypes = ["standard" for i in range(len(self.Rhos) - 1)]
         Ztypes[0], Ztypes[-1] = Ztype_far_left, Ztype_far_right
@@ -1105,13 +1112,13 @@ try again.")
             # Update coefficient arrays
             Coeffs[..., :, i] = M0[..., :, 0]
 
-            # Complete corresponding data in mirrored regions for even/odd case
-            if even:
-                Coeffs[..., 0, -i-1] = M0[..., 1, 0]
-                Coeffs[..., 1, -i-1] = M0[..., 0, 0]
-            if odd:
-                Coeffs[..., 0, -i-1] = -M0[..., 1, 0]
-                Coeffs[..., 1, -i-1] = -M0[..., 0, 0]
+            # # Complete corresponding data in mirrored regions for even/odd case
+            # if even:
+            #     Coeffs[..., 0, -i-1] = M0[..., 1, 0]
+            #     Coeffs[..., 1, -i-1] = M0[..., 0, 0]
+            # if odd:
+            #     Coeffs[..., 0, -i-1] = -M0[..., 1, 0]
+            #     Coeffs[..., 1, -i-1] = -M0[..., 0, 0]
 
         # Reduce dimension for length 1 inputs
         if len(C) == 1:
@@ -1205,8 +1212,8 @@ for xs and zs to levarage product nature of fields.")
         plane="Z",
         manual_coeffs=None,
         user_coeffs=None,
-        even=False,
-        odd=False,
+        # even=False,
+        # odd=False,
     ):
         """Return fields at propagation constant given by 'C' in plane
         determined by 'plane'. Vectorized in x,and z but not in C."""
@@ -1221,11 +1228,11 @@ for xs and zs to levarage product nature of fields.")
         if plane not in ["Z", "Beta", "Psi"]:
             raise ValueError("Plane must be 'Beta', 'Z' or 'Psi'.")
 
-        if even and odd:
-            raise ValueError("Only one of even and odd can be set to true")
+        # if even and odd:
+        #     raise ValueError("Only one of even and odd can be set to true")
 
-        if (even or odd) and (not self.is_symmetric):
-            raise ValueError("Non-symmetric guides don't have even/odd modes.")
+        # if (even or odd) and (not self.is_symmetric):
+        #     raise ValueError("Non-symmetric guides don't have even/odd modes.")
 
         if user_coeffs is not None:
             M = user_coeffs
@@ -1239,8 +1246,8 @@ for xs and zs to levarage product nature of fields.")
                 rounding=rounding,
                 plane=plane,
                 manual_coeffs=manual_coeffs,
-                even=even,
-                odd=odd,
+                # even=even,
+                # odd=odd,
             ).T
 
         Ztypes = ["standard" for i in range(len(self.Rhos) - 1)]
@@ -1314,8 +1321,8 @@ arrays for xs and zs to levarage product nature of fields.")
         sign="+1",
         plane="Z",
         Coeffs=None,
-        even=False,
-        odd=False,
+        # even=False,
+        # odd=False,
     ):
         """Return value of field with propagation constant C at x, z in plane
         determined by 'plane'. Vectorized in C.
@@ -1325,11 +1332,11 @@ arrays for xs and zs to levarage product nature of fields.")
         if plane not in ["Z", "Beta", "Psi"]:
             raise ValueError("Plane must be 'Beta', 'Z' or 'Psi'.")
 
-        if even and odd:
-            raise ValueError("Only one of even and odd can be set to true")
+        # if even and odd:
+        #     raise ValueError("Only one of even and odd can be set to true")
 
-        if (even or odd) and (not self.is_symmetric):
-            raise ValueError("Non-symmetric guides don't have even/odd modes.")
+        # if (even or odd) and (not self.is_symmetric):
+        #     raise ValueError("Non-symmetric guides don't have even/odd modes.")
 
         i = self.region_index(x)
         # Offset = self.Offsets[i]
@@ -1359,8 +1366,8 @@ arrays for xs and zs to levarage product nature of fields.")
                 field_type=field_type,
                 sign=sign,
                 plane=plane,
-                even=even,
-                odd=odd,
+                # even=even,
+                # odd=odd,
             )
 
         # models = self.regional_models[i]
@@ -1370,117 +1377,79 @@ arrays for xs and zs to levarage product nature of fields.")
                 + Coeffs[..., 1, i] * np.exp(-1j * Zi * x)
                 ) * np.exp(1j * Beta * z)
 
-# --------------Automated Mode Finding and Field Construction -----------------
+# ----------------------- Automated Mode Finding ------------------------------
 
-    def get_guided_propagation_constants(self, Nref=3000, rounding=8,
-                                         field_type='TE'):
-        """
-        Calculate the structure's guided mode propagation constants.
+    @copy_doc(get_guided_propagation_constants)
+    def get_guided_propagation_constants(self, **kwargs):
+        get_guided_propagation_constants(self, **kwargs)
 
-        Parameters
-        ----------
-        Nref : int, optional
-            Number of points in interval for guided mode search. The default is
-            3000.
-        """
+    @copy_doc(get_guided_modes)
+    def get_guided_modes(self, **kwargs):
+        get_guided_modes(self, **kwargs)
 
-        if self.Z_max_guided.imag == 0:
-            warn("Structure does not support guided modes.  Setting empty \
-lists for attribute guided_prop_constants.")
-            self.guided_prop_constants = []
-            return
+    @copy_doc(get_leaky_propagation_constants)
+    def get_leaky_propagation_constants(self, rmin, rmax, imin, imax,
+                                        **kwargs):
+        get_leaky_propagation_constants(self, rmin, rmax, imin, imax,
+                                        **kwargs)
 
-        def F(x): return -np.log(np.abs(self.eigenvalues(x*1j))**2)
-
-        xs = np.linspace(0.000001, 1.05 * self.Z_max_guided.imag, Nref)
-        ys = (F(xs[1:])-F(xs[:-1])) / (xs[1:] - xs[:-1])
-
-        sign_changes = xs[1:][np.where((np.sign(ys[:-1] * ys[1:])) < 0)[0]]
-        guesses = sign_changes[::2]
-
-        Zs = []
-        for (i, guess) in enumerate(guesses):
-            try:
-                Z = newton(self.eigenvalues, guess*1j)[0]
-                Zs.append(Z)
-            except RuntimeError:
-                print("Runtime Error at index "+str(i))
-                pass
-
-        Zs = np.array(Zs)
-        Zs = 1j * np.unique(Zs.imag)  # Remove possible repeats
-        Zs = np.flip(Zs)  # Invert order so fundamental comes first
-
-        self.guided_prop_constants = Zs
-
-    def get_guided_modes(self, Nref=3000, rounding=8, field_type='TE'):
-        """
-        Calculate guided modes of the structure.
-
-        Parameters
-        ----------
-        Nref : int, optional
-            Number of points in interval for guided mode search. The default is
-            3000.
-        """
-        if not hasattr(self, 'guided_prop_constants'):
-            self.get_guided_propagation_constants(Nref=Nref,
-                                                  field_type=field_type)
-        Zs = self.guided_prop_constants
-
-        if len(Zs) == 0:
-            warn("Structure does not support guided modes.  Setting empty \
-list for attribute guided_modes and None  guided_regional_coeffs.")
-            self.guided_modes = []
-            self.guided_regional_coeffs = None
-            return
-
-        Coeffs = self.coefficients(Zs,
-                                   mode_type='guided',
-                                   field_type=field_type)
-        self.guided_regional_coeffs = Coeffs
-        self.guided_modes = [self.fields(Z, rounding=rounding) for Z in Zs]
+    @copy_doc(get_leaky_modes)
+    def get_leaky_modes(self, **kwargs):
+        get_leaky_modes(self, **kwargs)
 
 # ------------------------Steepest Descent Path Methods------------------------
 
+    @copy_doc(sdp)
     def sdp(self, s, **kwargs):
         return sdp(self, s, **kwargs)
 
+    @copy_doc(sdp_derivative)
     def sdp_derivative(self, s, **kwargs):
         return sdp_derivative(self, s, **kwargs)
+
 # ------------------------------ Plotting -------------------------------------
 
+    @copy_doc(plot_refractive_index)
     def plot_refractive_index(self, **kwargs):
         return plot_refractive_index(self, **kwargs)
 
+    @copy_doc(plot_points)
     def plot_points(self, Cs, **kwargs):
         return plot_points(Cs, **kwargs)
 
+    @copy_doc(plot_field_1d)
     def plot_field_1d(self, F, *F_args, **kwargs):
         return plot_field_1d(self, F, *F_args, **kwargs)
 
+    @copy_doc(add_1d_plot)
     def add_1d_plot(self, F, *F_args, **kwargs):
         return add_1d_plot(self, F, *F_args, **kwargs)
 
+    @copy_doc(plot_field_2d)
     def plot_field_2d(self, F, *F_args, **kwargs):
         return plot_field_2d(self, F, *F_args, **kwargs)
 
+    @copy_doc(add_2d_plot)
     def add_2d_plot(self, F, *F_args, **kwargs):
         return add_2d_plot(self, F, *F_args, **kwargs)
 
+    @copy_doc(plot_field_2d_surface)
     def plot_field_2d_surface(self, F, *F_args, **kwargs):
         return plot_field_2d_surface(self, F, *F_args, **kwargs)
 
+    @copy_doc(add_2d_plot_surface)
     def add_2d_plot_surface(self, F, *F_args, **kwargs):
         return add_2d_plot_surface(self, F, *F_args, **kwargs)
 
+    @copy_doc(eigenvalue_plot)
     def eigenvalue_plot(self, rmin, rmax, imin, imax, **kwargs):
         return eigenvalue_plot(self, rmin, rmax, imin, imax, **kwargs)
 
+    @copy_doc(eigenvalue_plot_1d)
     def eigenvalue_plot_1d(self, contour, **kwargs):
         return eigenvalue_plot_1d(self, contour, **kwargs)
 
 
-A = Slab()
+# A = Slab()
 
 # A.transmission_matrix(10j, derivate=True)

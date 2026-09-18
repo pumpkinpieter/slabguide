@@ -1,10 +1,12 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.integrate import quad_vec
 # from warnings import warn
 from .normalizers import OurMethod
 from .contours import real_contour, sdp_contour
 from .fields import Field
+from .utilities import copy_doc
+from .plotting import plot_transform
+from .modefinding import get_guided_field, get_leaky_field
 from .spacewave import space_wave_approx
 
 
@@ -22,6 +24,7 @@ class Propagator():
         compute_class_I=True,
         compute_class_II=True,
         integration_args={},
+        calculate_guided_field=True,
     ):
         '''
         Class for computing induced fields in slab waveguides.
@@ -66,8 +69,11 @@ class Propagator():
         compute_class_II : bool, optional
             Whether or not to compute the radiation transform using class I 
             radiation modes. The default is True.
-        integration_args : dict
+        integration_args : dict, optional
             Extra arguments for scipy's quad_vec routine. Default is {}.
+        calculate_guided_field: bool, optional
+            Whether or not to calculate guided field associated with input.
+            The default is True.
         '''
         both = f0 is None and exact_transform is None
         neither = f0 is not None and exact_transform is not None
@@ -98,8 +104,8 @@ input field f0 or exact transform function.")
             if window is None:
                 raise ValueError("User must give support window [Lx, Rx] \
 when providing input field f0.")
-            self.Lx, self.Rx = window[0], window[1]
             self.f0 = f0
+            self.Lx, self.Rx = window[0], window[1]
 
             def func(C_lambda, sign=1, Coeffs=None):
 
@@ -154,9 +160,14 @@ when providing input field f0.")
 
         self.SDP = Field(SDP)
 
-        # Get guided field
-        Guided = self.get_guided_field(f0, self.Lx, self.Rx)
-        self.Guided = Field(Guided)
+        # Get guided field if desired
+        if calculate_guided_field:
+            self.Guided = self.get_guided_field()
+
+        # Otherwise set it to zero field (using Slab.fields to get right output
+        # shape for plotting).
+        else:
+            self.Guided = 0 * self.Slab.fields(1, mode_type='radiation')
 
         self.Full = Field(self.__call__)
 
@@ -179,16 +190,21 @@ when providing input field f0.")
         None
         '''
 
-        L_old = self.contours[0]['Cs'].real[0]
+        Ls = [C['Cs'].real[0]
+              for C in self.contours if C['contour_type'] == 'real']
+        args = np.argsort(Ls)
+        contours = np.array(self.contours)[args]
+        self.contours = list(contours)
 
-        for idx in range(len(self.contours)):
-            # Only order real contours
-            if self.contours[idx]['contour_type'] != 'real':
-                continue
-            L_new = self.contours[idx]['Cs'].real[0]
-            if L_new < L_old:
-                self.contours.insert(0, self.contours.pop(idx))
-                L_old = L_new
+        # for idx in range(len(self.contours)):
+        #     # Only order real contours
+        #     if self.contours[idx]['contour_type'] != 'real':
+        #         continue
+        #     L_new = self.contours[idx]['Cs'].real[0]
+        #     print(L_old, L_new)
+        #     if L_new < L_old:
+        #         self.contours.insert(0, self.contours.pop(idx))
+        #         L_old = L_new
 
     def split_contour(self, idx, split_indices, remove_indices=None):
         '''
@@ -340,7 +356,7 @@ when providing input field f0.")
 
                 # Note calculations for L below are all one higher than would
                 # be expected based on zero indexing. This is due to the
-                # behavior of np.split
+                # behavior of np.split in split_contour routine
                 if L <= 2:
                     L = 0
                 elif L % 2 == 0:
@@ -366,12 +382,38 @@ when providing input field f0.")
                         bridge_contour = real_contour(old_Cs[L-1], L_new, 3)
                     self.add_contour(bridge_contour, check_overlap=True)
                     # index_shift += 1
+
+                # Below case will occur original L was 2 or 1, which caused
+                # us to reset it to zero, eliminaing left part of old contour
+                # that we now need to bridge.
+                if L == 0 and old_Cs[L] < L_new:
+                    if new_contour_type == 'sdp':
+                        bridge_contour = sdp_contour(self.Slab, old_Cs[L],
+                                                     L_new, 3)
+                    else:
+                        bridge_contour = real_contour(old_Cs[L], L_new, 3)
+                    self.add_contour(bridge_contour, check_overlap=True)
+                    # index_shift += 1
+
                 if len(old_Cs) > R and R_new < old_Cs[R]:
                     if new_contour_type == 'sdp':
                         bridge_contour = sdp_contour(self.Slab, R_new,
                                                      old_Cs[R], 3)
                     else:
                         bridge_contour = real_contour(R_new, old_Cs[R], 3)
+                    self.add_contour(bridge_contour, check_overlap=True)
+                    # index_shift += 1
+
+                # Below case will occur original R was 2 or 1 less than length
+                # of old_Cs which caused us to reset it to len(old_Cs),
+                # eliminaing right part of old contour that we now need to
+                # bridge.
+                if len(old_Cs) == R and R_new < old_Cs[R-1]:
+                    if new_contour_type == 'sdp':
+                        bridge_contour = sdp_contour(self.Slab, R_new,
+                                                     old_Cs[R-1], 3)
+                    else:
+                        bridge_contour = real_contour(R_new, old_Cs[R-1], 3)
                     self.add_contour(bridge_contour, check_overlap=True)
                     # index_shift += 1
 
@@ -465,6 +507,9 @@ when providing input field f0.")
 
         # Mark radiation type
         self.mark_prop_ev()
+
+        # Order real valued contours in increasing order
+        self.order_contours()
 
         self.N_contours = len(self.contours)
 
@@ -682,161 +727,24 @@ spaced spaced intervals.")
             result += self.Guided(xs, zs)
         return result
 
-    def get_guided_field(self, f0, Lx, Rx, Nref=3000, field_type='TE',
-                         return_coeffs=False, **intargs):
-        """
-        Get guided field of guided induced by input function f0.
+# ----------------------- Automated Mode Finding ------------------------------
 
-        Parameters
-        ----------
-        f0 : callable
-            Input field.
-        Lx : float
-            Left endpoint of support of f0.
-        Rx : float
-            Right endpoint of support of f0.
-        Nref : int, optional
-            Number of points in interval for guided mode findig. The default is
-            3000.
+    @copy_doc(get_guided_field)
+    def get_guided_field(self, **kwargs):
+        return get_guided_field(self, **kwargs)
 
-        Returns
-        -------
-        callable
-            Guided field induced in guide by f0.
-        array
-            Coefficients of guided field (integral of f0 against each guided
-            mode).
-        """
-        if self.Slab.Z_max_guided.imag == 0:
-            #             warn("Structure does not support guided modes.  Setting guided \
-            # field to zero function.")
-            return lambda x, z: 0
-        try:
-            Zs = self.Slab.guided_prop_constants
-        except AttributeError:
-            self.Slab.get_guided_modes(Nref, field_type=field_type)
-            Zs = self.Slab.guided_prop_constants
+    @copy_doc(get_leaky_field)
+    def get_leaky_field(self, **kwargs):
+        return get_leaky_field(self, **kwargs)
 
-        def integrand(x, C):
-            return f0(x) * self.Slab.vectorized_fields(
-                C,
-                x,
-                mode_type="guided",
-                field_type=field_type,
-                Coeffs=self.Slab.guided_regional_coeffs
-            )
+# ----------------------- Space Wave Generation -------------------------------
 
-        coeffs = quad_vec(
-            integrand, Lx, Rx, args=(Zs,), **intargs
-        )[0]
-
-        Fs = self.Slab.guided_modes
-
-        def Guided(x, z): return sum([c * F(x, z)
-                                     for (c, F) in zip(coeffs, Fs)])
-
-        if return_coeffs:
-            return np.array(coeffs)
-        else:
-            return Guided
-
-    def plot_transform(
-        self,
-        indices=None,
-        figsize=(11, 4),
-        part="real",
-        marker="o",
-        markersize=3,
-        ax=None,
-        plot_axis=True,
-        axis_linewidth=1.25,
-        legend_fontsize=12,
-        color_I=None,
-        color_II=None,
-        plot_Z_evanescent=True,
-        **linekwargs,
-    ):
-        plt.close('all')
-        if ax is None:
-            fig, ax = plt.subplots(1, figsize=figsize)
-        else:
-            fig = plt.gcf()
-
-        if indices is None:
-            indices = slice(0, self.N_contours)
-
-        contours = np.array(self.contours)[indices]
-
-        for i in range(len(contours)):
-
-            contour = contours[i]
-            bools = [self.compute_class_I, self.compute_class_II]
-
-            for idx, boolean in enumerate(bools):
-
-                if idx == 0:
-                    alphas = contour['alphas_I']
-                    color = color_I
-                    if i == 0:
-                        label = 'class_I %s' % part
-                    else:
-                        label = None
-                else:
-                    alphas = contour['alphas_II']
-                    color = color_II
-                    if i == 0:
-                        label = 'class_II %s' % part
-                    else:
-                        label = None
-                if boolean:
-
-                    if part == "real":
-                        ys = alphas.real
-                    elif part == "imag":
-                        ys = alphas.imag
-                    elif part == "norm":
-                        ys = np.abs(alphas)
-                    else:
-                        raise ValueError("Part must be real, imag, or norm.")
-
-                    if contour['contour_type'] in ["real",
-                                                   "horizontal",
-                                                   "sdp"]:
-                        xs = contour['Cs'].real
-                    if contour['contour_type'] in ["imaginary",
-                                                   "vertical"]:
-                        xs = contour['Cs'].imag
-                        plot_Z_evanescent = False
-                    if contour['contour_type'] in ["circle",
-                                                   "half_circle"]:
-                        xs = contour['Ss']
-                        plot_Z_evanescent = False
-
-                    ax.plot(xs, ys, marker=marker, markersize=markersize,
-                            color=color, label=label, **linekwargs)
-
-                    if plot_Z_evanescent:
-
-                        flag = (np.min(xs) <= self.Slab.Z_evanescent.real) * \
-                            (np.max(xs) >= self.Slab.Z_evanescent.real)
-
-                        if flag:
-                            plt.axvline(self.Slab.Z_evanescent.real, lw=.75,
-                                        ls='--', color='gray')
-
-                    if plot_axis:
-
-                        ax.axhline(0, color="gray",
-                                   linewidth=axis_linewidth)
-
-                        near_y_axis = (min(np.abs(xs)) / np.ptp(xs)) <= 0.1
-                        if near_y_axis:
-                            ax.axvline(0, color="gray",
-                                       linewidth=axis_linewidth)
-
-            ax.legend(fontsize=legend_fontsize)
-
-        return fig, ax
-
+    @copy_doc(space_wave_approx)
     def space_wave_approx(self, f0, window, **kwargs):
         return space_wave_approx(self.Slab, f0, window, **kwargs)
+
+# -------------------------- Transform Plot -----------------------------------
+
+    @copy_doc(plot_transform)
+    def plot_transform(self, **kwargs):
+        return plot_transform(self, **kwargs)

@@ -191,6 +191,7 @@ of correct length for input F.")
                 hatch=hatch,
                 color=str(hcolor),
             )
+    plt.show(fig)
     return fig, ax
 
 
@@ -325,6 +326,7 @@ of correct length for input F.")
         ax.legend(fontsize=legend_fontsize)
     else:
         ax.plot(ind_vars, ys, **lineargs)
+    # plt.show()
 
 
 def plot_field_2d(
@@ -462,6 +464,7 @@ def plot_field_2d(
             location=loc,
             format=colorbar_format,
         )
+    plt.show(fig)
     return fig, ax
 
 
@@ -479,11 +482,11 @@ def add_2d_plot(
     zstride=1,
     part="real",
     cmap="viridis",
+    equal=True,
     levels=40,
     plot_Rhos=True,
     Rho_lineargs={"lw": 1, "ls": ":", "c": "k"},
     colorbar=False,
-    colorbar_orientation=None,
     pad=0.05,
     shrink=1,
     colorbar_frac=0.1,
@@ -491,6 +494,7 @@ def add_2d_plot(
     anchor=(0.5, 0.5),
     colorbar_nticks=5,
     colorbar_format="%.2f",
+    layout='vertical',
     **contourargs,
 ):
 
@@ -505,8 +509,14 @@ def add_2d_plot(
 
     xs = xs[0: -1: xstride]
     zs = zs[0: -1: zstride]
+    lenzs, lenxs = np.ptp(zs), np.ptp(xs)
 
     Fs = F(xs, zs, *F_args)
+    Xs, Zs = np.meshgrid(xs, zs)
+
+    if layout == 'horizontal':
+        Fs = Fs.T
+        Xs, Zs = Zs.T, Xs.T
 
     if part == "real":
         Ys = Fs.real
@@ -517,43 +527,63 @@ def add_2d_plot(
     else:
         raise ValueError("Part must be real, imag or norm.")
 
-    Xs, Zs = np.meshgrid(xs, zs)
-    lenzs, lenxs = np.ptp(Zs), np.ptp(Xs)
-
     axmap = ax.contourf(
         Xs, Zs, Ys, levels=levels, cmap=cmap, **contourargs
     )
 
+    if equal:
+        ax.set_aspect("equal")
+
+    if layout == 'horizontal':
+        ax.set_ylim(ax.get_ylim()[::-1])
+
+    Rhos = Slab.Rhos[1:-1]
+
     if plot_Rhos:
-        for Rho in Slab.Rhos[1:-1]:
-            ax.axvline(
+        msk = np.where((Rhos <= np.max(xs)) * (Rhos >= np.min(xs)))
+        if layout == 'horizontal':
+            pltfunc = ax.axhline
+        else:
+            pltfunc = ax.axvline
+        for Rho in Rhos[msk]:
+            pltfunc(
                 Rho,
                 linestyle=Rho_lineargs["ls"],
                 linewidth=Rho_lineargs["lw"],
                 color=Rho_lineargs["c"],
             )
+
     if colorbar:
-        if colorbar_orientation is None:
-            if lenzs >= lenxs:
-                colorbar_orientation = "horizontal"
+        if lenzs >= lenxs:
+            if layout == 'vertical':
+                cbar_orient = 'horizontal'
+                loc = 'bottom'
             else:
-                colorbar_orientation = "vertical"
+                cbar_orient = 'vertical'
+                loc = 'left'
         else:
-            colorbar_orientation = colorbar_orientation
+            if layout == 'vertical':
+                cbar_orient = 'vertical'
+                loc = 'right'
+            else:
+                cbar_orient = 'horizontal'
+                loc = 'bottom'
+
         ticks = np.linspace(np.min(Ys), np.max(Ys), colorbar_nticks)
 
         plt.colorbar(
             axmap,
             pad=pad,
             shrink=shrink,
-            orientation=colorbar_orientation,
+            orientation=cbar_orient,
             anchor=anchor,
             fraction=colorbar_frac,
             aspect=colorbar_aspect,
-            ax=ax,
             ticks=ticks,
+            location=loc,
             format=colorbar_format,
         )
+    # plt.show()
 
 
 def plot_field_2d_surface(
@@ -645,6 +675,7 @@ def plot_field_2d_surface(
             anchor=anchor,
             fraction=colorbar_frac,
         )
+    plt.show(fig)
     return fig, ax
 
 
@@ -704,5 +735,5 @@ def add_2d_plot_surface(
         cstride=cstride,
         **surfaceargs,
     )
-
+    # plt.show()
     return ax

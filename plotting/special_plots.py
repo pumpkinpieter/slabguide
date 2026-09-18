@@ -362,3 +362,153 @@ def eigenvalue_plot_1d(
             linewidth=1.25,
         )
     return fig, ax
+
+
+def plot_transform(
+    Propagator,
+    indices=None,
+    figsize=(11, 4),
+    part="real",
+    marker="o",
+    markersize=3,
+    ax=None,
+    plot_axis=True,
+    axis_linewidth=1.25,
+    legend_fontsize=12,
+    color_I='C0',
+    color_II='C1',
+    plot_Z_evanescent=True,
+    legend=True,
+    plot_class_I=True,
+    plot_class_II=True,
+    **linekwargs,
+):
+    """
+    Plot radiation transform of input associated with Propagator.
+
+    Parameters
+    ----------
+    Propagator : TYPE
+        DESCRIPTION.
+    indices : TYPE, optional
+        DESCRIPTION. The default is None.
+    figsize : TYPE, optional
+        DESCRIPTION. The default is (11, 4).
+    part : TYPE, optional
+        DESCRIPTION. The default is "real".
+    marker : TYPE, optional
+        DESCRIPTION. The default is "o".
+    markersize : TYPE, optional
+        DESCRIPTION. The default is 3.
+    ax : TYPE, optional
+        DESCRIPTION. The default is None.
+    plot_axis : TYPE, optional
+        DESCRIPTION. The default is True.
+    axis_linewidth : TYPE, optional
+        DESCRIPTION. The default is 1.25.
+    legend_fontsize : TYPE, optional
+        DESCRIPTION. The default is 12.
+    color_I : TYPE, optional
+        DESCRIPTION. The default is None.
+    color_II : TYPE, optional
+        DESCRIPTION. The default is None.
+    plot_Z_evanescent : TYPE, optional
+        DESCRIPTION. The default is True.
+    **linekwargs : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    fig : TYPE
+        DESCRIPTION.
+    ax : TYPE
+        DESCRIPTION.
+
+    Raises
+    ------
+    ValueError
+        DESCRIPTION.
+    """
+    if ax is None:
+        plt.close('all')
+        fig, ax = plt.subplots(1, figsize=figsize)
+    else:
+        fig = plt.gcf()
+
+    if indices is None:
+        indices = slice(0, Propagator.N_contours)
+
+    contours = np.array(Propagator.contours)[indices]
+
+    for i in range(len(contours)):
+
+        contour = contours[i]
+        bools = [Propagator.compute_class_I * plot_class_I,
+                 Propagator.compute_class_II * plot_class_II]
+
+        for idx, boolean in enumerate(bools):
+
+            if idx == 0:
+                alphas = contour['alphas_I']
+                color = color_I
+                if i == 0:
+                    label = 'class I %s' % part
+                else:
+                    label = None
+            else:
+                alphas = contour['alphas_II']
+                color = color_II
+                if i == 0:
+                    label = 'class II %s' % part
+                else:
+                    label = None
+            if boolean:
+
+                if part == "real":
+                    ys = alphas.real
+                elif part == "imag":
+                    ys = alphas.imag
+                elif part == "norm":
+                    ys = np.abs(alphas)
+                else:
+                    raise ValueError("Part must be real, imag, or norm.")
+
+                if contour['contour_type'] in ["real",
+                                               "horizontal",
+                                               "sdp"]:
+                    xs = contour['Cs'].real
+                if contour['contour_type'] in ["imaginary",
+                                               "vertical"]:
+                    xs = contour['Cs'].imag
+                    plot_Z_evanescent = False
+                if contour['contour_type'] in ["circle",
+                                               "half_circle"]:
+                    xs = contour['Ss']
+                    plot_Z_evanescent = False
+
+                ax.plot(xs, ys, marker=marker, markersize=markersize,
+                        color=color, label=label, **linekwargs)
+
+                if plot_Z_evanescent:
+
+                    flag = (np.min(xs) <= Propagator.Slab.Z_evanescent.real) *\
+                        (np.max(xs) >= Propagator.Slab.Z_evanescent.real)
+
+                    if flag:
+                        plt.axvline(Propagator.Slab.Z_evanescent.real, lw=.75,
+                                    ls='--', color='gray')
+
+                if plot_axis:
+
+                    ax.axhline(0, color="gray",
+                               linewidth=axis_linewidth)
+
+                    near_y_axis = (min(np.abs(xs)) / np.ptp(xs)) <= 0.1
+                    if near_y_axis:
+                        ax.axvline(0, color="gray",
+                                   linewidth=axis_linewidth)
+
+        if legend:
+            ax.legend(fontsize=legend_fontsize)
+
+    return fig, ax
