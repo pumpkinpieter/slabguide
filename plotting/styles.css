@@ -1,0 +1,16 @@
+.lil-gui {
+    --width: 20vw;
+    --font-size:12.5px;
+    --padding: 2px;
+    --spacing: 4.5px;
+    }
+
+@media (display-mode: fullscreen) {
+    .lil-gui {
+    --width: 18vw;
+    --font-size: 15px;
+    --padding: 4px;
+    --spacing: 8px;
+
+  }
+}
