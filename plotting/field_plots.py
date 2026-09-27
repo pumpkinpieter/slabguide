@@ -326,7 +326,6 @@ of correct length for input F.")
         ax.legend(fontsize=legend_fontsize)
     else:
         ax.plot(ind_vars, ys, **lineargs)
-    # plt.show()
 
 
 def plot_field_2d(
@@ -583,7 +582,6 @@ def add_2d_plot(
             location=loc,
             format=colorbar_format,
         )
-    # plt.show()
 
 
 def plot_field_2d_surface(
@@ -735,5 +733,4 @@ def add_2d_plot_surface(
         cstride=cstride,
         **surfaceargs,
     )
-    # plt.show()
-    return ax
+    # return ax

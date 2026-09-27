@@ -180,6 +180,9 @@ def eigenvalue_plot(
     title_fontsize=14,
     **contourargs,
 ):
+    """Plot locations of eigenvalues in the complex plane in window given by
+    rmin, rmax, imin, imax."""
+
     plt.close("all")
     xs = np.linspace(rmin, rmax, num=rref)
     ys = np.linspace(imin, imax, num=iref)
@@ -277,6 +280,7 @@ def eigenvalue_plot(
             linestyle=":",
             linewidth=1.25,
         )
+    plt.show(fig)
     return fig, ax, im
 
 

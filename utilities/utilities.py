@@ -245,7 +245,7 @@ log_abs=False.')
 
 class ThreeJSMeshSaver():
 
-    def __init__(self, Xs, Zs):
+    def __init__(self, Xs, Ys):
         """
         A class for saving grid data for ThreeJS meshes.
 
@@ -256,13 +256,13 @@ class ThreeJSMeshSaver():
         ----------
         Xs : ndarray
             2D array of x values for base mesh.
-        Zs : ndarray
+        Ys : ndarray
             2D array of z values for base mesh.
         """
 
         # Set base mesh arrays as attributes
         self.Xs = Xs
-        self.Zs = Zs
+        self.Ys = Ys
 
         # Get total number of points in base mesh arrays
         self.L = self.Xs.shape[0] * self.Xs.shape[1]
@@ -282,27 +282,27 @@ class ThreeJSMeshSaver():
             Array of integers determining triangles of base plane.
         """
         # Get shape of base plane discretization
-        Nz, Nx = self.Xs.shape[0], self.Xs.shape[1]
+        Ny, Nx = self.Xs.shape[0], self.Xs.shape[1]
 
         # Form index list of base mesh points
-        indices = np.arange(0, Nz * Nx, dtype=np.uint32).reshape((Nz, Nx))
+        indices = np.arange(0, Ny * Nx, dtype=np.uint32).reshape((Ny, Nx))
 
         # Get lower left index point of each rectangle in base mesh
-        fbases = indices[:Nz-1, :Nx-1].flatten()
+        fbases = indices[:Ny-1, :Nx-1].flatten()
         Nb = len(fbases)
 
         # Get lower right triangles (vectorized)
-        f1 = np.array([indices[:Nz-1, :Nx-1],
-                       indices[:Nz-1, 1:Nx],
-                       indices[1:Nz, 1:Nx]],
+        f1 = np.array([indices[:Ny-1, :Nx-1],
+                       indices[:Ny-1, 1:Nx],
+                       indices[1:Ny, 1:Nx]],
                       dtype=np.uint32).transpose(1, 2, 0).reshape(Nb, 3)
 
         # f1 = np.array([[i, i+1, i+1+Nx] for i in fbases], dtype=np.uint32)
 
         # Get upper left triangles (vectorized)
-        f2 = np.array([indices[:Nz-1, :Nx-1],
-                       indices[1:Nz, 1:Nx],
-                       indices[1:Nz, :Nx-1]],
+        f2 = np.array([indices[:Ny-1, :Nx-1],
+                       indices[1:Ny, 1:Nx],
+                       indices[1:Ny, :Nx-1]],
                       dtype=np.uint32).transpose(1, 2, 0).reshape(Nb, 3)
         # f2 = np.array([[i, i+1+Nx, i+Nx] for i in fbases], dtype=np.uint32)
 
@@ -324,7 +324,7 @@ class ThreeJSMeshSaver():
             Array of base vertices with zero y component, shape is self.L x 3.
         """
 
-        Base = np.array([self.Xs, np.zeros_like(self.Xs), self.Zs],
+        Base = np.array([self.Xs, self.Ys, np.zeros_like(self.Xs)],
                         dtype=np.float32)
         base_vertices = Base.transpose(1, 2, 0).reshape((self.L, 3))
         return base_vertices
@@ -348,10 +348,10 @@ class ThreeJSMeshSaver():
         self.save_as_json(filepath, self.base_vertices)
 
     def save_heights_as_json(self, filepath, heights):
-        heights_array = self.create_height_array_from_complex(heights, self.Xs)
+        heights_array = self.create_height_array_from_complex(heights)
         self.save_as_json(filepath, heights_array)
 
-    def save_values_as_json(self, filepath, f0s):
+    def save_values_as_json(self, filepath, vals):
         with open(filepath + '.json', 'w') as outfile:
-            json.dump(f0s.tolist(), outfile, separators=(',', ':'),
+            json.dump(vals.tolist(), outfile, separators=(',', ':'),
                       sort_keys=True, indent=4)
