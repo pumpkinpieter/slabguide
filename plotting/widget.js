@@ -14,6 +14,16 @@ const font = await loader2.loadAsync( 'https://esm.sh/three@0.183.0/examples/fon
 
 function render({ model, el }) {
 
+    //#region Utilities
+
+    function setGroupColor(group, color){
+        // change the color of group elements
+        for ( let i = 0; i < group.children.length; i++ ) {
+            group.children[i].material.color = color;
+        }
+    }
+    //#endregion
+
     //#region StopWatch
     ////////////// StopWatch Class //////////////////
 
@@ -388,34 +398,33 @@ function render({ model, el }) {
     
     //#endregion
 
-    //#region Wireframe Overlay
-    const wiremat = material_shader.clone();
-    wiremat.fragmentShader =  `
-        uniform float gridlinescale;
-        varying vec3 vColor;
-        void main(){
-            gl_FragColor = vec4(gridlinescale*vColor, 1.0);
-        }`;
+    //#region Wireframe Overlay (not used)
+    // const wiremat = material_shader.clone();
+    // wiremat.fragmentShader =  `
+    //     uniform float gridlinescale;
+    //     varying vec3 vColor;
+    //     void main(){
+    //         gl_FragColor = vec4(gridlinescale*vColor, 1.0);
+    //     }`;
 
-    wiremat.wireframe = true;
-    wiremat.uniforms = uniforms;
-    const wiremesh = new THREE.Mesh( geometry, wiremat );
-    scene.add( wiremesh );
-    wiremesh.visible = false;
-    wiremesh.translateY(ytranslation);
+    // wiremat.wireframe = true;
+    // wiremat.uniforms = uniforms;
+    // const wiremesh = new THREE.Mesh( geometry, wiremat );
+    // scene.add( wiremesh );
+    // wiremesh.visible = false;
+    // wiremesh.translateY(ytranslation);
     
     //#endregion
 
-    //#region Gridlines
+    //#region Grid
     
-    //#region Gridlines Setup
+    //#region Setup
 
-    let Ndata_per_point = 2;  
-    let y0step = 2;
-    let x0step = 2;
+    const gridlines = new THREE.Group();
+    scene.add(gridlines);
 
-    let NTVgridlines = Math.floor((y0s.length - 1) / y0step) + 1;
-    let NLgridlines = Math.floor((x0s.length - 1) / x0step) + 1;
+    let base_x0step = 3;
+    let base_y0step = 5;
 
     // Function to set complex valued height attributes correctly for LineGeometry
     function setHeights( array, geometry, name ) {
@@ -437,7 +446,7 @@ function render({ model, el }) {
     }
 
     let gridline_material = new LineMaterial( {
-        linewidth: 1.15,
+        linewidth: 1.,
         vertexColors: true,
     } );
 
@@ -549,77 +558,90 @@ function render({ model, el }) {
 
     //#region Transverse Gridlines
 
-    const TVGridlines = [];
+    const transverse_gridlines = new THREE.Group();
+    gridlines.add(transverse_gridlines);
 
-    for (let i = 0; i < NTVgridlines; i++){
-        let ybase = y0s[i * y0step];
+    function makeTransvereGridlines(y0step){
+        let NTVgridlines = Math.floor((y0s.length - 1) / y0step) + 1;
+        for (let i = 1; i < NTVgridlines; i++){
+            let ybase = y0s[i * y0step];
 
-        let current_guided = guided_bytes.slice(y0step * i * Ndata_per_point * x0s.length,
-        (y0step * i + 1) * Ndata_per_point * x0s.length);
+            let current_guided = guided_bytes.slice(y0step * i * 2 * x0s.length,
+            (y0step * i + 1) * 2 * x0s.length);
 
-        let current_prop = propagating_bytes.slice(y0step * i * Ndata_per_point * x0s.length,
-        (y0step * i + 1) * Ndata_per_point * x0s.length);
+            let current_prop = propagating_bytes.slice(y0step * i * 2 * x0s.length,
+            (y0step * i + 1) * 2 * x0s.length);
 
-        let current_ev = evanescent_bytes.slice(y0step * i * Ndata_per_point * x0s.length,
-        (y0step * i + 1) * Ndata_per_point * x0s.length);
+            let current_ev = evanescent_bytes.slice(y0step * i * 2 * x0s.length,
+            (y0step * i + 1) * 2 * x0s.length);
 
-        const temp_geometry = new LineGeometry();
-        temp_geometry.setPositions( TVGLBasePositions );
-        setHeights(current_guided, temp_geometry, 'guided');
-        setHeights(current_prop, temp_geometry, 'propagating');
-        setHeights(current_ev, temp_geometry, 'evanescent');
+            const temp_geometry = new LineGeometry();
+            temp_geometry.setPositions( TVGLBasePositions );
+            setHeights(current_guided, temp_geometry, 'guided');
+            setHeights(current_prop, temp_geometry, 'propagating');
+            setHeights(current_ev, temp_geometry, 'evanescent');
 
-        let line = new Line2( temp_geometry, gridline_material );
-        line.computeLineDistances();
-        line.scale.set( 1, 1, 1 );
-        line.translateY(ybase + ytranslation);
-        scene.add( line );
-        TVGridlines.push(line);
-    }
+            let line = new Line2( temp_geometry, gridline_material );
+            line.computeLineDistances();
+            line.scale.set( 1, 1, 1 );
+            line.translateY(ybase + ytranslation);
+            transverse_gridlines.add(line);
+        }
+    };
+    makeTransvereGridlines(base_y0step);
 
     //#endregion
 
     //#region Longitudinal Gridlines
 
-    const LGridlines = [];
+    const longitudinal_gridlines = new THREE.Group();
+    gridlines.add(longitudinal_gridlines);
 
-    for (let i = 0; i < NLgridlines; i++){
-        let xbase = x0s[i * x0step];
+    function makeLongitudinalGridlines(x0step){
+        let NLgridlines = Math.floor((x0s.length - 1) / x0step) + 1;
+        for (let i = 0; i < NLgridlines; i++){
+            let xbase = x0s[i * x0step];
 
-        let temp_guided = [];
-        let temp_prop = [];
-        let temp_ev = []
-        for (let j = 0; j < y0s.length; j++){
-            let cgs = guided_bytes.slice(Ndata_per_point * (i * x0step + j * x0s.length),
-                Ndata_per_point * (i * x0step + j * x0s.length + 1))
-            temp_guided.push(cgs[0], cgs[1]);
-            let cps = propagating_bytes.slice(Ndata_per_point * (i * x0step + j * x0s.length),
-                Ndata_per_point * (i * x0step + j * x0s.length + 1))
-            temp_prop.push(cps[0], cps[1]);
-            let ces = evanescent_bytes.slice(Ndata_per_point * (i * x0step + j * x0s.length),
-                Ndata_per_point * (i * x0step + j * x0s.length + 1))
-            temp_ev.push(ces[0], ces[1]);
+            let temp_guided = [];
+            let temp_prop = [];
+            let temp_ev = []
+            for (let j = 0; j < y0s.length; j++){
+                let cgs = guided_bytes.slice(2 * (i * x0step + j * x0s.length),
+                    2 * (i * x0step + j * x0s.length + 1))
+                temp_guided.push(cgs[0], cgs[1]);
+                let cps = propagating_bytes.slice(2 * (i * x0step + j * x0s.length),
+                    2 * (i * x0step + j * x0s.length + 1))
+                temp_prop.push(cps[0], cps[1]);
+                let ces = evanescent_bytes.slice(2 * (i * x0step + j * x0s.length),
+                    2 * (i * x0step + j * x0s.length + 1))
+                temp_ev.push(ces[0], ces[1]);
+            }
+
+            const temp_geometry = new LineGeometry();
+            temp_geometry.setPositions( LGLBasePositions );
+            setHeights(new Float32Array(temp_guided), temp_geometry, 'guided');
+            setHeights(new Float32Array(temp_prop), temp_geometry, 'propagating');
+            setHeights(new Float32Array(temp_ev), temp_geometry, 'evanescent');
+
+            let line = new Line2( temp_geometry, gridline_material );
+            line.computeLineDistances();
+            line.scale.set( 1, 1, 1 );
+            line.translateX(xbase);
+            line.translateY(ytranslation);
+            longitudinal_gridlines.add(line);
         }
-
-        const temp_geometry = new LineGeometry();
-        temp_geometry.setPositions( LGLBasePositions );
-        setHeights(new Float32Array(temp_guided), temp_geometry, 'guided');
-        setHeights(new Float32Array(temp_prop), temp_geometry, 'propagating');
-        setHeights(new Float32Array(temp_ev), temp_geometry, 'evanescent');
-
-        let line = new Line2( temp_geometry, gridline_material );
-        line.computeLineDistances();
-        line.scale.set( 1, 1, 1 );
-        line.translateX(xbase);
-        line.translateY(ytranslation);
-        scene.add( line );
-        LGridlines.push(line);
     }
+
+    makeLongitudinalGridlines(base_x0step);
+
     //#endregion
 
     //#endregion
     
-    //#region Border
+    //#region Borders
+
+    const borders = new THREE.Group();
+    scene.add(borders);
 
     const border_points_front = [];
     border_points_front.push( xmin, ytranslation, 0.0 );
@@ -636,40 +658,40 @@ function render({ model, el }) {
     border_line_left_geo.setPositions( border_points_left);
     
     let border_line_material = new LineMaterial( {
-    
-        color: new THREE.Color().setRGB (0.20784313725490197, 0.5176470588235295, 0.8941176470588236),
-        // color: 'silver',
+        // color: new THREE.Color().setRGB (0.20784313725490197, 0.5176470588235295, 0.8941176470588236),
+        color: 'silver',
         linewidth: 1.5, // in pixels
         dashed: false
-    
     } );
     
     const border_line_front = new Line2( border_line_front_geo, border_line_material );
     border_line_front.computeLineDistances();
     border_line_front.scale.set( 1, 1, 1 );
-    scene.add( border_line_front );
+    borders.add( border_line_front );
 
     const border_line_back = border_line_front.clone();
     border_line_back.computeLineDistances();
     border_line_back.scale.set( 1, 1, 1 );
     border_line_back.translateY(ymax-ymin);
-    scene.add( border_line_back);
+    borders.add( border_line_back);
 
     const border_line_left = new Line2( border_line_left_geo, border_line_material );
     border_line_left.computeLineDistances();
     border_line_left.scale.set( 1, 1, 1 );
-    scene.add( border_line_left );
+    borders.add( border_line_left );
 
     const border_line_right = border_line_left.clone();
     border_line_right.computeLineDistances();
     border_line_right.scale.set( 1, 1, 1 );
     border_line_right.translateX(xmax-xmin);
-    scene.add( border_line_right );
+    borders.add( border_line_right );
     
     //#endregion
 
     //#region Interface Lines 
-    
+    const interface_lines = new THREE.Group();
+    scene.add(interface_lines);
+
     const interface_points = [];
     interface_points.push( Rhos[1], ytranslation, 0.0 );
     interface_points.push( Rhos[1], ymax-ymin+ ytranslation, 0.0 );
@@ -694,7 +716,7 @@ function render({ model, el }) {
         interface_line.computeLineDistances();
         interface_line.scale.set( 1, 1, 1 );
         interface_line.translateX(Rhos[i]-Rhos[1]);
-        scene.add( interface_line );
+        interface_lines.add( interface_line );
     }
 
     //#endregion
@@ -715,9 +737,9 @@ function render({ model, el }) {
     inputline_geometry.setPositions( f0_points );
         
     let inputline_material = new LineMaterial( {
-        color: new THREE.Color().setRGB (0.20784313725490197, 0.5176470588235295, 0.8941176470588236),
-        linewidth: 2, // in pixels
-        dashed: false
+        // color: new THREE.Color().setRGB (0.20784313725490197, 0.5176470588235295, 0.8941176470588236),
+        linewidth: 1.15,
+        // dashed: false
     } );
     
     inputline_material.uniforms.scale = uniforms.scale;
@@ -765,7 +787,7 @@ function render({ model, el }) {
 
     //#endregion
 
-    //#region SUB GUI: View Folder 
+    //#region SUB GUI: View 
     
     const viewFolder = gui.addFolder('Camera');
     viewFolder.open();
@@ -794,7 +816,7 @@ function render({ model, el }) {
     viewFolder.add(viewParams, 'reset_controls').name('Reset View')
     //#endregion
 
-    //#region SUB GUI: Animation Folder
+    //#region SUB GUI: Animation
     
     const animationFolder = gui.addFolder('Animation');
     animationFolder.open();
@@ -833,7 +855,7 @@ function render({ model, el }) {
     animationFolder.close();
     //#endregion
 
-    //#region SUB GUI: Components Folder
+    //#region SUB GUI: Components
 
     const componentsFolder = gui.addFolder('Components');
     componentsFolder.open();
@@ -866,27 +888,28 @@ function render({ model, el }) {
     componentsFolder.close();
     //#endregion
 
-    //#region SUB GUI: Appearence Folder
+    //#region SUB GUI: Appearence
 
     const appearenceFolder = gui.addFolder('Appearence');
-    appearenceFolder.open();
+
+    //#region SUB GUI: SUB Appearence: Mesh
+
+    const meshAppearenceFolder = appearenceFolder.addFolder('Mesh');
+
+    meshAppearenceFolder.open();
     
     const colormapList = {
+      'copper':'copper',
       'viridis': 'viridis',
       'magma': 'magma',
       'bone':'bone',
-      'copper':'copper',
       'rainbow':'rainbow',
     }
     
     const appearenceParams = {
-      colormaps: colormapList['viridis'],
+      colormaps: colormapList['copper'],
     };
 
-    //#region SUB GUI: SUB Appearence Folder: Main Mesh
-    
-    const meshAppearenceFolder = appearenceFolder.addFolder('Field');
-    meshAppearenceFolder.open();
     meshAppearenceFolder.add(mesh.material.uniforms.scale, 'value', 0.0, 2.0).name('scale');
     
     meshAppearenceFolder
@@ -895,42 +918,120 @@ function render({ model, el }) {
       .onChange((value) =>{mesh.material.uniforms.vLut.value = luts[value];
       });
     
-    // meshAppearenceFolder.add(uniforms.colormin, 'value', ymin, 0)
-    //   .listen()
-    //   .name('colormin');
-    // meshAppearenceFolder.add(uniforms.colormax, 'value', 0, ymax)
-    //   .listen()
-    //   .name('colormax');
-    
-    meshAppearenceFolder.add(mesh.material.uniforms.colorscale, 'value', 0.0, 2.0).name('colorscale');
-    
-    meshAppearenceFolder.add(mesh.material, 'wireframe');
+    meshAppearenceFolder.add(mesh.material.uniforms.colorscale, 'value', 0.04, 2.0).name('colorscale');
+    // appearenceFolder.add(mesh.material, 'wireframe');
+    // meshAppearenceFolder.close();
 
-    meshAppearenceFolder.add(wiremesh, 'visible').name('show grid');
-    
-    meshAppearenceFolder.add(wiremesh.material.uniforms.gridlinescale, 'value', .01, 1).name('grid shade')
-    
-    const param = {
-    'grid linewidth': 1.5,
-};
-    meshAppearenceFolder.add( param, 'grid linewidth', .01, 10 ).onChange( function ( val ) {
-    gridline_material.linewidth = val;
-} );
     //#endregion
 
-    //#region SUB GUI: SUB Appearence Folder: Input Line
+    //#region SUB GUI: SUB Appearence: Lines
+    const lineAppearenceFolder = appearenceFolder.addFolder('Lines');
+
+    //#region SUB GUI: SUB Appearence: SUB Lines: Grid
     
-    const inputFieldFolder = appearenceFolder.addFolder('Input Line');
+    const gridAppearenceFolder = lineAppearenceFolder.addFolder('Grid');
+    gridAppearenceFolder.open();
+
+    gridAppearenceFolder.add(gridlines, 'visible').name('visible');
+        
+    const grid_params = {
+    'line width': .7,
+    'x step': base_x0step,
+    'y step': base_y0step,
+};
+    gridAppearenceFolder.add( grid_params, 'line width', .01, 2 )
+    .onChange( function ( val ) {
+    gridline_material.linewidth = val;
+} );
+    gridAppearenceFolder.add(gridline_material.uniforms.gridlinescale, 'value', .01, 1).name('shade')
+
+    gridAppearenceFolder.add( grid_params, 'x step', 1, 20)
+    .step(1)
+    .onChange( (val) => {
+        longitudinal_gridlines.clear();
+        makeLongitudinalGridlines(val);
+    });
+
+    gridAppearenceFolder.add( grid_params, 'y step', 1, 20)
+    .step(1)
+    .onChange( (val) => {
+        transverse_gridlines.clear();
+        makeTransvereGridlines(val);
+    });
+
+    gridAppearenceFolder.close();
+
+    //#endregion
+
+    //#region SUB GUI: SUB Appearence: SUB Lines: Borders
+    
+    const borderAppearenceFolder = lineAppearenceFolder.addFolder('Borders');
+    borderAppearenceFolder.open();
+    
+    const silver = new THREE.Color('silver');
+
+    const border_params = {
+    width: .7,
+    color: [silver.r, silver.g, silver.b],
+};
+    borderAppearenceFolder.add( border_params, 'width', .01, 5 )
+    .onChange( function ( val ) {
+        border_line_material.linewidth = val;
+    } );    
+
+    borderAppearenceFolder
+      .addColor( border_params, 'color')
+      .name('color')
+      .onChange(function (value) {
+        const color = new THREE.Color().setRGB(value[0], value[1], value[2]);
+        border_line_material.color = color;
+    });
+    borderAppearenceFolder.add(borders, 'visible').name('visible');
+
+    borderAppearenceFolder.close();
+
+    //#endregion
+
+    //#region SUB GUI: SUB Appearence: SUB Lines: Interfaces
+
+    const interfaceAppearenceFolder = lineAppearenceFolder.addFolder('Interfaces');
+    interfaceAppearenceFolder.open();
+    
+    const interface_params = {
+    width: .7,
+    color: [silver.r, silver.g, silver.b],
+};
+    interfaceAppearenceFolder.add( interface_params, 'width', .1, 4 )
+    .onChange( function ( val ) {
+        interface_line_material.linewidth = val;
+    } );    
+
+    interfaceAppearenceFolder
+      .addColor( interface_params, 'color')
+      .name('color')
+      .onChange(function (value) {
+        const color = new THREE.Color().setRGB(value[0], value[1], value[2]);
+        interface_line_material.color = color;
+    });
+    interfaceAppearenceFolder.add(interface_lines, 'visible').name('visible');
+
+    interfaceAppearenceFolder.close();
+
+    //#endregion
+
+    //#region SUB GUI: SUB Appearence: SUB Lines: Input Line
+    
+    const inputFieldFolder = lineAppearenceFolder.addFolder('Input Line');
     inputFieldFolder.open();
     
     const inputFieldParams = {
-      width: 1.5,
-      color: [0.20784313725490197, 0.5176470588235295, 0.8941176470588236],
+      width: 1.15,
+      color: [silver.r, silver.g, silver.b],
     };
     
     inputFieldFolder
       .add( inputFieldParams, 'width', 0, 5 )
-      .name('line width')
+      .name('width')
       .onChange( function ( value ) {
     
       inputline_material.linewidth = value;
@@ -939,16 +1040,23 @@ function render({ model, el }) {
     
     inputFieldFolder
       .addColor( inputFieldParams, 'color')
-      .name('line color')
+      .name('color')
       .onChange(function (value) {
         const color = new THREE.Color().setRGB(value[0], value[1], value[2]);
         inputline_material.color = color;
     });
 
+    inputFieldFolder.add(inputline, 'visible').name('visible');
+
     inputFieldFolder.close();
+
+    //#endregion
+    
+    lineAppearenceFolder.close();
+
     //#endregion
 
-    appearenceFolder.close();
+    // appearenceFolder.close();
 
     //#endregion
 
