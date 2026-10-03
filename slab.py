@@ -371,17 +371,42 @@ try again.")
             ni = self.n0
         return np.sqrt(self.K0**2 * ni**2 - Beta**2, dtype=complex)
 
-    def Zi_from_Z0(self, Z0, ni):
+    def Zi_from_Z0(self, Z0, ni, reduce_dim=True):
         """Get Z on region i (with refractive index ni) from Z0. Vectorized
         in Z0 and ni"""
-        if ni == self.n0:
-            return Z0
-        Z0, ni = np.array(Z0), np.array(ni)
-        return np.sqrt(
-            (ni[np.newaxis] ** 2 - self.n0**2) * self.K0**2
-            + Z0[..., np.newaxis] ** 2,
-            dtype=complex,
-        )[..., 0]
+        # if ni == self.n0:
+        #     return Z0
+        # Z0, ni = np.array(Z0), np.array(ni)
+        # return np.sqrt(
+        #     (ni[np.newaxis] ** 2 - self.n0**2) * self.K0**2
+        #     + Z0[..., np.newaxis] ** 2,
+        #     dtype=complex,
+        # )[..., 0]
+
+        # Give inputs at least one non-zero dimension
+        try:
+            len(Z0)
+            Z0 = np.array(Z0)
+        except TypeError:
+            Z0 = np.array([Z0])
+        try:
+            len(ni)
+            ni = np.array(ni)
+        except TypeError:
+            ni = np.array([ni])
+            
+        # Perform main calculation
+        result = np.sqrt((ni[np.newaxis] ** 2 - self.n0**2) * self.K0**2
+                         + Z0[..., np.newaxis] ** 2, dtype=complex)
+
+        # Put original input back if ni == n0
+        nmat = ni[np.newaxis]* np.ones_like(result)
+        Z0mat = Z0[...,np.newaxis] *  np.ones_like(result)
+        result = np.where(nmat == self.n0, Z0mat, result)
+
+        if reduce_dim: #removes dim=1 axes
+            result = np.squeeze(result)
+        return result
 
     def Psi_i_from_Psi0(self, Psi0, ni):
         """Get Psi on region i (with refractive index ni) from Psi0."""
@@ -413,8 +438,8 @@ try again.")
             idx[np.where(condition)] = j
         idx[np.where((xs >= self.Rhos[-1]))] = j
 
-        if len(xs) == 1:
-            return idx[0]
+        # if len(xs) == 1:
+        #     return idx[0]
         return idx
 
     def ns_from_xs(self, xs, continuity='left'):
@@ -1310,72 +1335,120 @@ arrays for xs and zs to levarage product nature of fields.")
 
         return Field(F)
 
-    def vectorized_fields(
-        self,
-        C,
-        x,
-        z=0,
-        Normalizer=None,
-        field_type="TE",
-        mode_type="radiation",
-        sign="+1",
-        plane="Z",
-        Coeffs=None,
-        # even=False,
-        # odd=False,
-    ):
-        """Return value of field with propagation constant C at x, z in plane
-        determined by 'plane'. Vectorized in C.
+    # def vectorized_fields(
+    #     self,
+    #     C,
+    #     x,
+    #     z=0,
+    #     Normalizer=None,
+    #     field_type="TE",
+    #     mode_type="radiation",
+    #     sign="+1",
+    #     plane="Z",
+    #     Coeffs=None,
+    # ):
+    #     """Return value of field with propagation constant C at x, z in plane
+    #     determined by 'plane'. Vectorized in C.
 
-        Note: a goal is to fully vectorize the fields both in C, x and z."""
+    #     Note: a goal is to fully vectorize the fields both in C, x and z."""
 
-        if plane not in ["Z", "Beta", "Psi"]:
-            raise ValueError("Plane must be 'Beta', 'Z' or 'Psi'.")
+    #     if plane not in ["Z", "Beta", "Psi"]:
+    #         raise ValueError("Plane must be 'Beta', 'Z' or 'Psi'.")
 
-        # if even and odd:
-        #     raise ValueError("Only one of even and odd can be set to true")
+        # i = self.region_index(x)
 
-        # if (even or odd) and (not self.is_symmetric):
-        #     raise ValueError("Non-symmetric guides don't have even/odd modes.")
+        # if plane == "Beta":
+        #     Beta = C
+        #     Zi = np.array(self.Zi_from_Beta(C, ni=self.ns[i]))
 
-        i = self.region_index(x)
-        # Offset = self.Offsets[i]
+        # elif plane == "Z":
+        #     Zi = np.array(self.Zi_from_Z0(C, ni=self.ns[i]))
+        #     Beta = self.Beta_from_Zi(Zi, ni=self.ns[i])
 
+        # else:
+        #     Beta = self.K0 * self.n0 * np.cos(C)
+        #     Zi = (
+        #         self.K0
+        #         * self.ns[i]
+        #         * np.sin(self.Psi_i_from_Psi0(C, self.ns[i]))
+        #     )
+
+        # if Coeffs is None:
+        #     Coeffs = self.coefficients(
+        #         C,
+        #         Normalizer=Normalizer,
+        #         up_to_region=i,
+        #         mode_type=mode_type,
+        #         field_type=field_type,
+        #         sign=sign,
+        #         plane=plane,
+        #     )
+
+        # return (Coeffs[..., 0, i] * np.exp(1j * Zi * x)
+        #         + Coeffs[..., 1, i] * np.exp(-1j * Zi * x)
+        #         ) * np.exp(1j * Beta * z)
+        
+    def vectorized_fields(self, Cs, xs, zs=0, Normalizer=None, field_type="TE", 
+                          mode_type="radiation", sign="+1", plane="Z", 
+                          Coeffs=None, reduce_dim=True):
+        # try:
+        #     len(Cs)
+        #     Cs = np.array(Cs)
+        # except TypeError:
+        #     Cs = np.array([Cs])
+        # try:
+        #     len(xs)
+        #     xs = np.array(xs)
+        # except TypeError:
+        #     xs = np.array([xs])
+        # try:
+        #     len(zs)
+        #     zs = np.array(zs)
+        # except TypeError:
+        #     zs = np.array([zs])
+        
+        Cs = np.atleast_1d(Cs)
+        xs = np.atleast_1d(xs)
+        zs = np.atleast_1d(zs)
+        
+        # find refractive index for each x
+        ns = self.ns_from_xs(xs)
+    
         if plane == "Beta":
             Beta = C
-            Zi = np.array(self.Zi_from_Beta(C, ni=self.ns[i]))
-
+            Zi = np.array(self.Zi_from_Beta(Cs, ni=self.ns[i]))
+    
         elif plane == "Z":
-            Zi = np.array(self.Zi_from_Z0(C, ni=self.ns[i]))
-            Beta = self.Beta_from_Zi(Zi, ni=self.ns[i])
-
+            # get Zi value for each x and Z0 (here Cs are Z0s since plane == 'Z')
+            Zi = self.Zi_from_Z0(Cs, ns)
+            Beta = self.Beta_from_Zi(Cs)
+        
         else:
-            Beta = self.K0 * self.n0 * np.cos(C)
-            Zi = (
-                self.K0
-                * self.ns[i]
-                * np.sin(self.Psi_i_from_Psi0(C, self.ns[i]))
-            )
-
+            Beta = self.K0 * self.n0 * np.cos(Cs)
+            Zi = ( self.K0 * self.ns[i] * 
+                  np.sin(self.Psi_i_from_Psi0(Cs, self.ns[i])))
+            
         if Coeffs is None:
-            Coeffs = self.coefficients(
-                C,
-                Normalizer=Normalizer,
-                up_to_region=i,
-                mode_type=mode_type,
-                field_type=field_type,
-                sign=sign,
-                plane=plane,
-                # even=even,
-                # odd=odd,
-            )
-
-        # models = self.regional_models[i]
-        # M, N = models['M'], models['N']
-
-        return (Coeffs[..., 0, i] * np.exp(1j * Zi * x)
-                + Coeffs[..., 1, i] * np.exp(-1j * Zi * x)
-                ) * np.exp(1j * Beta * z)
+            Coeffs = self.coefficients(Cs, Normalizer=Normalizer, 
+                                       mode_type=mode_type,
+                                       field_type=field_type,
+                                       sign=sign, plane=plane)
+            
+        # Adjust shape of Zi for len(xs) == 1 case
+        if len(xs) == 1:
+            Zi = Zi[..., np.newaxis]
+            
+        # repeat coefficients in regions with same refractive indices
+        MultiCoeffs = Coeffs[..., self.region_index(xs)]
+        uX = MultiCoeffs[..., 0, :]* np.exp(1j * Zi * xs) + \
+            MultiCoeffs[..., 1, :]* np.exp(-1j * Zi * xs)
+        expBetaz = np.exp(1j* Beta[..., np.newaxis] * zs[np.newaxis])
+        
+        if reduce_dim:
+            return np.squeeze(uX[..., np.newaxis, : ] * 
+                              expBetaz[..., np.newaxis])
+        else:
+            return uX[..., np.newaxis, : ] * expBetaz[..., np.newaxis]
 
 # ----------------------- Automated Mode Finding ------------------------------
 

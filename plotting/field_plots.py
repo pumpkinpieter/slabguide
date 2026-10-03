@@ -14,7 +14,7 @@ from warnings import warn
 def plot_field_1d(
     Slab,
     F,
-    *F_args,
+    fkwargs={},
     xs=None,
     zs=None,
     figsize=(11, 5),
@@ -113,7 +113,7 @@ def plot_field_1d(
 
         # Catch error if input F only has one variable
         try:
-            fs = F(xs, zs, *F_args)
+            fs = F(xs, zs, **fkwargs)
             # Reduce dimension if necessary
             if len(fs.shape) > 1:
                 if fs.shape[0] == 1 and fs.shape[1] > 1:
@@ -123,7 +123,7 @@ def plot_field_1d(
             if z_vars:
                 warn("Plotting single variable function of x along z axis. \
 This defaults to plotting function in x axis.  Consider providing xs instead.")
-            fs = F(ind_vars, *F_args)
+            fs = F(ind_vars, **fkwargs)
     elif type(F) in [list, np.ndarray]:
         fs = np.array(F, dtype=complex)
         if len(fs) != len(ind_vars):
@@ -191,14 +191,14 @@ of correct length for input F.")
                 hatch=hatch,
                 color=str(hcolor),
             )
-    plt.show(fig)
+    # plt.show(fig)
     return fig, ax
 
 
 def add_1d_plot(
     Slab,
     F,
-    *F_args,
+    fkwargs={},
     xs=None,
     zs=None,
     part="real",
@@ -275,7 +275,7 @@ def add_1d_plot(
 
         # Catch error if input F only has one variable
         try:
-            fs = F(xs, zs, *F_args)
+            fs = F(xs, zs, **fkwargs)
             # Reduce dimension if necessary
             if len(fs.shape) > 1:
                 if fs.shape[0] == 1 and fs.shape[1] > 1:
@@ -285,7 +285,7 @@ def add_1d_plot(
             if z_vars:
                 warn("Plotting single variable function of x along z axis. \
 This defaults to plotting function in x axis.  Consider providing xs instead.")
-            fs = F(ind_vars, *F_args)
+            fs = F(ind_vars, **fkwargs)
     elif type(F) in [list, np.ndarray]:
         fs = np.array(F, dtype=complex)
         if len(fs) != len(ind_vars):
@@ -331,7 +331,7 @@ of correct length for input F.")
 def plot_field_2d(
     Slab,
     F,
-    *F_args,
+    fkwargs={},
     xs=None,
     zs=None,
     zmin=0,
@@ -379,8 +379,8 @@ def plot_field_2d(
     if xs is None:
         xs = Slab.all_Xs
 
-    xs = xs[0: -1: xstride]
-    zs = zs[0: -1: zstride]
+    xs = xs[: : xstride]
+    zs = zs[: : zstride]
 
     lenzs, lenxs = np.ptp(zs), np.ptp(xs)
 
@@ -393,7 +393,7 @@ def plot_field_2d(
 
     fig, ax = plt.subplots(1, figsize=figsize)
 
-    Fs = F(xs, zs, *F_args)
+    Fs = F(xs, zs, **fkwargs)
     Xs, Zs = np.meshgrid(xs, zs)
 
     if layout == 'horizontal':
@@ -463,14 +463,14 @@ def plot_field_2d(
             location=loc,
             format=colorbar_format,
         )
-    plt.show(fig)
+    # plt.show(fig)
     return fig, ax
 
 
 def add_2d_plot(
     Slab,
     F,
-    *F_args,
+    fkwargs={},
     ax=None,
     xs=None,
     zs=None,
@@ -506,11 +506,11 @@ def add_2d_plot(
     if xs is None:
         xs = Slab.all_Xs
 
-    xs = xs[0: -1: xstride]
-    zs = zs[0: -1: zstride]
+    xs = xs[: : xstride]
+    zs = zs[: : zstride]
     lenzs, lenxs = np.ptp(zs), np.ptp(xs)
 
-    Fs = F(xs, zs, *F_args)
+    Fs = F(xs, zs, **fkwargs)
     Xs, Zs = np.meshgrid(xs, zs)
 
     if layout == 'horizontal':
@@ -587,7 +587,7 @@ def add_2d_plot(
 def plot_field_2d_surface(
     Slab,
     F,
-    *F_args,
+    fkwargs={},
     xs=None,
     zs=None,
     zmin=0,
@@ -602,8 +602,8 @@ def plot_field_2d_surface(
     elev=45,
     roll=0,
     zoom=2,
-    rstride=2,
-    cstride=10,
+    zstride=2,
+    xstride=10,
     z_lim_factor=1,
     colorbar=False,
     pad=0.15,
@@ -623,16 +623,19 @@ def plot_field_2d_surface(
 
     if xs is None:
         xs = Slab.all_Xs  # doesn't duplicate endpoints
-
+        
+    xs = xs[: : xstride]
+    zs = zs[: : zstride]
+    
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(projection="3d")
 
     Xs, Zs = np.meshgrid(xs, zs)
 
     if product_func:
-        fs = F(xs, zs, *F_args)
+        fs = F(xs, zs, **fkwargs)
     else:
-        fs = F(Xs, Zs, *F_args)
+        fs = F(Xs, Zs, **fkwargs)
 
     if part == "real":
         ys = fs.real
@@ -649,8 +652,6 @@ def plot_field_2d_surface(
         ys,
         clip_on=False,
         cmap=cmap,
-        rstride=rstride,
-        cstride=cstride,
         **surfaceargs,
     )
     # lims = (np.ptp(Xs), np.ptp(Zs), min(np.ptp(Xs), np.ptp(Zs)))
@@ -673,14 +674,14 @@ def plot_field_2d_surface(
             anchor=anchor,
             fraction=colorbar_frac,
         )
-    plt.show(fig)
+    # plt.show(fig)
     return fig, ax
 
 
 def add_2d_plot_surface(
     Slab,
     F,
-    *F_args,
+    fkwargs={},
     ax=None,
     xs=None,
     zs=None,
@@ -690,8 +691,8 @@ def add_2d_plot_surface(
     part="real",
     product_func=True,
     cmap="viridis",
-    rstride=2,
-    cstride=10,
+    zstride=2,
+    xstride=10,
     **surfaceargs,
 ):
     """Add 3d surface plot of function F to axis."""
@@ -706,13 +707,16 @@ def add_2d_plot_surface(
 
     if xs is None:
         xs = Slab.all_Xs  # doesn't duplicate endpoints
-
+        
+    xs = xs[: : xstride]
+    zs = zs[: : zstride]
+    
     Xs, Zs = np.meshgrid(xs, zs)
 
     if product_func:
-        fs = F(xs, zs, *F_args)
+        fs = F(xs, zs, **fkwargs)
     else:
-        fs = F(Xs, Zs, *F_args)
+        fs = F(Xs, Zs, **fkwargs)
 
     if part == "real":
         ys = fs.real
@@ -729,8 +733,6 @@ def add_2d_plot_surface(
         ys,
         clip_on=False,
         cmap=cmap,
-        rstride=rstride,
-        cstride=cstride,
         **surfaceargs,
     )
     # return ax

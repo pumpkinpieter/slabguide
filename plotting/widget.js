@@ -7,7 +7,6 @@ import { Line2 } from 'https://esm.sh/three/addons/lines/Line2.js';
 import { LineMaterial } from 'https://esm.sh/three/addons/lines/LineMaterial.js';
 import { FontLoader } from 'https://esm.sh/three/addons/loaders/FontLoader.js';
 import { TextGeometry } from 'https://esm.sh/three/addons/geometries/TextGeometry.js';
-// import vert from './vert.js';
 
 const loader2 = new FontLoader();
 const font = await loader2.loadAsync( 'https://esm.sh/three@0.183.0/examples/fonts/helvetiker_regular.typeface.json' );
@@ -233,12 +232,14 @@ function render({ model, el }) {
 
     //////////////  Add AxesHelper with Labels //////////////
     
+    const axes = new THREE.Group();
+
     const axesLength = 1.25;
     const axesHelper = new THREE.AxesHelper( axesLength );
     axesHelper.translateX(1.08*xmin);
     axesHelper.translateY(1.08*ytranslation);
-
-    scene.add( axesHelper );
+    
+    axes.add(axesHelper)
 
     const textMaterial = new THREE.MeshBasicMaterial({
         // color: new THREE.Color().setRGB(1, 0.6, 0),
@@ -275,23 +276,48 @@ function render({ model, el }) {
     textX.position.x = axesHelper.position.x + 1.05*axesLength;
     textX.position.y = axesHelper.position.y + .5*fontdepth;
     textX.position.z = axesHelper.position.z - .5*fontsize;
-    scene.add(textX);
+    axes.add(textX);
 
     textY.rotateX(Math.PI/2);
     textY.rotateY(Math.PI/2);
     textY.position.x = axesHelper.position.x - .5*fontdepth;
     textY.position.y = axesHelper.position.y + 1.05*axesLength;
     textY.position.z = axesHelper.position.z - .5*fontsize;
-    scene.add(textY);
+    axes.add(textY);
 
     textZ.rotateX(Math.PI/2);
     textZ.position.x = axesHelper.position.x - .5*fontsize ;
     textZ.position.y = axesHelper.position.y + .5*fontdepth;
     textZ.position.z = axesHelper.position.z + 1.05*axesLength + .5*fontsize;
-    scene.add(textZ);
+    axes.add(textZ);
+
+    scene.add( axes );
 
     //#endregion
 
+    //#region Uniforms
+
+    const uniforms = {	
+        time: {value: stopwatch.time},
+        speed: {value: 2.5},
+        scale: {value: 1.0},
+        guided_on: {value:true},
+        evanescent_on: {value:true},
+        propagating_on: {value:true},
+        vLut: {value: luts['copper']},
+        colormax: {value:zmax},
+        colormin: {value:zmin},
+        colorscale: {value:1.0},
+        gridlinescale: {value:.7},
+        shift: {value: 1.0},
+    }
+
+    // const big_uniforms = THREE.UniformsUtils.merge( [ THREE.UniformsLib[ 'lights' ], THREE.UniformsLib[ 'fog' ], uniforms ] );
+    // big_uniforms['fogDensity'] = .5;
+    // big_uniforms.update;
+
+    //#endregion
+    
     //#region Vertex and Fragment Shaders
     const vertShader = `
         attribute vec2 evanescent;
@@ -347,29 +373,6 @@ function render({ model, el }) {
 
     //#endregion
 
-    //#region Uniforms
-
-    const uniforms = {	
-        time: {value: stopwatch.time},
-        speed: {value: 2.5},
-        scale: {value: 1.0},
-        guided_on: {value:true},
-        evanescent_on: {value:true},
-        propagating_on: {value:true},
-        vLut: {value: luts['copper']},
-        colormax: {value:zmax},
-        colormin: {value:zmin},
-        colorscale: {value:1.0},
-        gridlinescale: {value:.7},
-        shift: {value: 1.0},
-    }
-
-    // const big_uniforms = THREE.UniformsUtils.merge( [ THREE.UniformsLib[ 'lights' ], THREE.UniformsLib[ 'fog' ], uniforms ] );
-    // big_uniforms['fogDensity'] = .5;
-    // big_uniforms.update;
-
-    //#endregion
-
     //#region Main Mesh
     const geometry = new THREE.BufferGeometry();
     geometry.setIndex( new THREE.Uint32BufferAttribute(trig_bytes, 1));
@@ -416,9 +419,9 @@ function render({ model, el }) {
     
     //#endregion
 
-    //#region Grid
+    //#region Gridlines
     
-    //#region Setup
+    //#region Gridline Setup
 
     const gridlines = new THREE.Group();
     scene.add(gridlines);
@@ -518,11 +521,11 @@ function render({ model, el }) {
 
                             resultStart = cos(speed * time) * RealStart + sin(speed * time) * ImagStart;
                             resultEnd = cos(speed * time) * RealEnd + sin(speed * time) * ImagEnd;
-
+            
                             #ifdef USE_COLOR
                             int indexStart = int(floor(clamp(255.0/colorscale*(resultStart-colorscale*colormin)/(colormax - colormin), 0.0, 255.0)));
                             int indexEnd = int(floor(clamp(255.0/colorscale*(resultEnd-colorscale*colormin)/(colormax - colormin), 0.0, 255.0)));
-                            
+
                             vColor.xyz = ( position.y < 0.5 ) ? gridlinescale * vLut[indexStart] : gridlinescale * vLut[indexEnd];
                             #endif
                         \n`
@@ -770,9 +773,9 @@ function render({ model, el }) {
 
     //#endregion
 
-    //#region MAIN GUI
+    //#region GUI
 
-    //#region SUB GUI: Set Up
+    //#region GUI: Set Up
     
     const gui_container = document.createElement('div');
     gui_container.id = 'gui_container';
@@ -787,9 +790,9 @@ function render({ model, el }) {
 
     //#endregion
 
-    //#region SUB GUI: View 
+    //#region GUI: View 
     
-    const viewFolder = gui.addFolder('Camera');
+    const viewFolder = gui.addFolder('View');
     viewFolder.open();
     
     const viewParams = {
@@ -813,10 +816,10 @@ function render({ model, el }) {
     }};
     
     viewFolder.add(viewParams, 'full_screen').name('Full Screen')
-    viewFolder.add(viewParams, 'reset_controls').name('Reset View')
+    viewFolder.add(viewParams, 'reset_controls').name('Reset')
     //#endregion
 
-    //#region SUB GUI: Animation
+    //#region GUI: Animation
     
     const animationFolder = gui.addFolder('Animation');
     animationFolder.open();
@@ -855,9 +858,9 @@ function render({ model, el }) {
     animationFolder.close();
     //#endregion
 
-    //#region SUB GUI: Components
+    //#region GUI: Components
 
-    const componentsFolder = gui.addFolder('Components');
+    const componentsFolder = gui.addFolder('Fields');
     componentsFolder.open();
     const componentsParams = {
       guided_on: true,
@@ -888,9 +891,9 @@ function render({ model, el }) {
     componentsFolder.close();
     //#endregion
 
-    //#region SUB GUI: Appearence
+    //#region GUI: Appearence
 
-    const appearenceFolder = gui.addFolder('Appearence');
+    const appearenceFolder = gui.addFolder('Style');
 
     //#region SUB GUI: SUB Appearence: Mesh
 
@@ -898,6 +901,8 @@ function render({ model, el }) {
 
     meshAppearenceFolder.open();
     
+    meshAppearenceFolder.add(mesh, 'visible');
+
     const colormapList = {
       'copper':'copper',
       'viridis': 'viridis',
@@ -919,7 +924,7 @@ function render({ model, el }) {
       });
     
     meshAppearenceFolder.add(mesh.material.uniforms.colorscale, 'value', 0.04, 2.0).name('colorscale');
-    // appearenceFolder.add(mesh.material, 'wireframe');
+
     // meshAppearenceFolder.close();
 
     //#endregion
@@ -927,19 +932,59 @@ function render({ model, el }) {
     //#region SUB GUI: SUB Appearence: Lines
     const lineAppearenceFolder = appearenceFolder.addFolder('Lines');
 
+    //#region SUB GUI: SUB Appearence: SUB Lines: Axes
+
+    const axesAppearenceFolder = lineAppearenceFolder.addFolder('Axes');
+    axesAppearenceFolder.open();
+
+    axesAppearenceFolder.add(axes, 'visible');
+    axesAppearenceFolder.close();
+
+    //#endregion
+
+    //#region SUB GUI: SUB Appearence: SUB Lines: Border
+    
+    const borderAppearenceFolder = lineAppearenceFolder.addFolder('Border');
+    borderAppearenceFolder.open();
+    
+    borderAppearenceFolder.add(borders, 'visible').name('visible');
+
+    const silver = new THREE.Color('silver');
+
+    const border_params = {
+    width: .7,
+    color: [silver.r, silver.g, silver.b],
+};
+    borderAppearenceFolder.add( border_params, 'width', .01, 5 )
+    .onChange( function ( val ) {
+        border_line_material.linewidth = val;
+    } );    
+
+    borderAppearenceFolder
+      .addColor( border_params, 'color')
+      .name('color')
+      .onChange(function (value) {
+        const color = new THREE.Color().setRGB(value[0], value[1], value[2]);
+        border_line_material.color = color;
+    });
+
+    borderAppearenceFolder.close();
+
+    //#endregion
+    
     //#region SUB GUI: SUB Appearence: SUB Lines: Grid
     
     const gridAppearenceFolder = lineAppearenceFolder.addFolder('Grid');
     gridAppearenceFolder.open();
-
-    gridAppearenceFolder.add(gridlines, 'visible').name('visible');
         
+    gridAppearenceFolder.add(gridlines, 'visible').name('visible');
+
     const grid_params = {
     'line width': .7,
     'x step': base_x0step,
     'y step': base_y0step,
 };
-    gridAppearenceFolder.add( grid_params, 'line width', .01, 2 )
+    gridAppearenceFolder.add( grid_params, 'line width', .01, 10 )
     .onChange( function ( val ) {
     gridline_material.linewidth = val;
 } );
@@ -959,71 +1004,18 @@ function render({ model, el }) {
         makeTransvereGridlines(val);
     });
 
+
     gridAppearenceFolder.close();
 
     //#endregion
-
-    //#region SUB GUI: SUB Appearence: SUB Lines: Borders
     
-    const borderAppearenceFolder = lineAppearenceFolder.addFolder('Borders');
-    borderAppearenceFolder.open();
+    //#region SUB GUI: SUB Appearence: SUB Lines: Input
     
-    const silver = new THREE.Color('silver');
-
-    const border_params = {
-    width: .7,
-    color: [silver.r, silver.g, silver.b],
-};
-    borderAppearenceFolder.add( border_params, 'width', .01, 5 )
-    .onChange( function ( val ) {
-        border_line_material.linewidth = val;
-    } );    
-
-    borderAppearenceFolder
-      .addColor( border_params, 'color')
-      .name('color')
-      .onChange(function (value) {
-        const color = new THREE.Color().setRGB(value[0], value[1], value[2]);
-        border_line_material.color = color;
-    });
-    borderAppearenceFolder.add(borders, 'visible').name('visible');
-
-    borderAppearenceFolder.close();
-
-    //#endregion
-
-    //#region SUB GUI: SUB Appearence: SUB Lines: Interfaces
-
-    const interfaceAppearenceFolder = lineAppearenceFolder.addFolder('Interfaces');
-    interfaceAppearenceFolder.open();
-    
-    const interface_params = {
-    width: .7,
-    color: [silver.r, silver.g, silver.b],
-};
-    interfaceAppearenceFolder.add( interface_params, 'width', .1, 4 )
-    .onChange( function ( val ) {
-        interface_line_material.linewidth = val;
-    } );    
-
-    interfaceAppearenceFolder
-      .addColor( interface_params, 'color')
-      .name('color')
-      .onChange(function (value) {
-        const color = new THREE.Color().setRGB(value[0], value[1], value[2]);
-        interface_line_material.color = color;
-    });
-    interfaceAppearenceFolder.add(interface_lines, 'visible').name('visible');
-
-    interfaceAppearenceFolder.close();
-
-    //#endregion
-
-    //#region SUB GUI: SUB Appearence: SUB Lines: Input Line
-    
-    const inputFieldFolder = lineAppearenceFolder.addFolder('Input Line');
+    const inputFieldFolder = lineAppearenceFolder.addFolder('Input');
     inputFieldFolder.open();
-    
+
+    inputFieldFolder.add(inputline, 'visible').name('visible');
+
     const inputFieldParams = {
       width: 1.15,
       color: [silver.r, silver.g, silver.b],
@@ -1046,12 +1038,42 @@ function render({ model, el }) {
         inputline_material.color = color;
     });
 
-    inputFieldFolder.add(inputline, 'visible').name('visible');
-
     inputFieldFolder.close();
 
     //#endregion
+
+    //#region SUB GUI: SUB Appearence: SUB Lines: Interfaces
+
+    const interfaceAppearenceFolder = lineAppearenceFolder.addFolder('Interfaces');
+    interfaceAppearenceFolder.open();
     
+    interfaceAppearenceFolder.add(interface_lines, 'visible').name('visible');
+
+    const interface_params = {
+    width: .7,
+    color: [silver.r, silver.g, silver.b],
+};
+    interfaceAppearenceFolder.add( interface_params, 'width', .1, 4 )
+    .onChange( function ( val ) {
+        interface_line_material.linewidth = val;
+    } );    
+
+    interfaceAppearenceFolder
+      .addColor( interface_params, 'color')
+      .name('color')
+      .onChange(function (value) {
+        const color = new THREE.Color().setRGB(value[0], value[1], value[2]);
+        interface_line_material.color = color;
+    });
+
+    interfaceAppearenceFolder.add(interface_line_material, 'dashed');
+    interfaceAppearenceFolder.add(interface_line_material, 'dashSize', .05, 1.5);
+    interfaceAppearenceFolder.add(interface_line_material, 'gapSize', .05, 1.5);
+
+    interfaceAppearenceFolder.close();
+
+    //#endregion
+
     lineAppearenceFolder.close();
 
     //#endregion
@@ -1122,12 +1144,12 @@ function render({ model, el }) {
     // renderer.render(scene, camera);
 
     function animate() {
-        requestID = requestAnimationFrame(animate);
         controls.update();
         stopwatch.run();
         uniforms.time.value = stopwatch.time;
         uniforms.update;
         renderer.render(scene, camera);
+        requestID = requestAnimationFrame(animate);
     }
     
     animate();

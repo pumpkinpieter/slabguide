@@ -462,20 +462,24 @@ when providing input field f0.")
                                             field_type=self.field_type,
                                             Normalizer=self.Normalizer,
                                             plane=self.plane, sign=1)
-
+            # Add Coeffs to contour dictionary for later use in vectorized 
+            # quadrature routines
+            contour['Coeffs_I'] = Coeffs
+            
             # Get class I radiation transform of input field
             contour['alphas_I'] = self.transform(Cs, sign=1, Coeffs=Coeffs)
-
-            # Get class I radiation mode fields
-            F_I = []
-            for C in Cs:
-                F = self.Slab.fields(C, mode_type="radiation",
-                                     field_type=self.field_type, sign=1,
-                                     Normalizer=self.Normalizer,
-                                     plane=self.plane
-                                     )
-                F_I.append(F)
-            contour['fields_I'] = F_I
+            
+            
+            # # Get class I radiation mode fields
+            # F_I = []
+            # for C in Cs:
+            #     F = self.Slab.fields(C, mode_type="radiation",
+            #                          field_type=self.field_type, sign=1,
+            #                          Normalizer=self.Normalizer,
+            #                          plane=self.plane
+            #                          )
+            #     F_I.append(F)
+            # contour['fields_I'] = F_I
 
         if self.compute_class_II:
 
@@ -484,20 +488,24 @@ when providing input field f0.")
                                             field_type=self.field_type,
                                             Normalizer=self.Normalizer,
                                             plane=self.plane, sign=-1)
-
+            
+            # Add Coeffs to contour dictionary for later use in vectorized 
+            # quadrature routines
+            contour['Coeffs_II'] = Coeffs
+            
             # Get class II radiation transform of input field
             contour['alphas_II'] = self.transform(Cs, sign=-1, Coeffs=Coeffs)
 
-            # Get class II radiation mode fields
-            F_II = []
-            for C in Cs:
-                F = self.Slab.fields(C, mode_type="radiation",
-                                     field_type=self.field_type, sign=-1,
-                                     Normalizer=self.Normalizer,
-                                     plane=self.plane
-                                     )
-                F_II.append(F)
-            contour['fields_II'] = F_II
+            # # Get class II radiation mode fields
+            # F_II = []
+            # for C in Cs:
+            #     F = self.Slab.fields(C, mode_type="radiation",
+            #                          field_type=self.field_type, sign=-1,
+            #                          Normalizer=self.Normalizer,
+            #                          plane=self.plane
+            #                          )
+            #     F_II.append(F)
+            # contour['fields_II'] = F_II
 
         # Append contour to end of list
         self.contours.append(contour)
@@ -590,47 +598,78 @@ when providing input field f0.")
         self,
         xs,
         zs,
-        alphas,
-        Fs,
         contour,
-        method='simpson'
+        method='simpson',
+        compute_class='I',
     ):
-
+        if compute_class not in ['I', 'II']:
+            raise ValueError("Compute class must be 'I' or 'II'. ")
+            
         Cs, dCdS, Ss = contour['Cs'], contour['dCdS'], contour['Ss']
-        dS = Ss[1:] - Ss[:-1]
-        Nz = len(Cs)
+        
+        if compute_class == 'I':
+            alphas = contour['alphas_I']
+            Coeffs = contour['Coeffs_I']
+        else:
+            alphas = contour['alphas_II']
+            Coeffs = contour['Coeffs_II']
 
+        dS = Ss[1:] - Ss[:-1]
+        # Nz = len(Cs)
+        
+        # change shape to conform to vectorization
+        alphas = np.expand_dims(alphas, (1,2))
+        dCdS = np.expand_dims(dCdS, (1,2))
+        dS = np.expand_dims(dS, (1,2))
+        
         if method == "left_endpoint":
-            ys = sum(
-                [
-                    alphas[i] * Fs[i](xs, zs) * dCdS[i] * dS[i]
-                    for i in range(Nz - 1)
-                ]
-            )
+            # ys = sum(
+            #     [
+            #         alphas[i] * Fs[i](xs, zs) * dCdS[i] * dS[i]
+            #         for i in range(Nz - 1)
+            #     ]
+            # )
+            fdata = self.Slab.vectorized_fields(Cs[:-1], xs, zs, 
+                                                Coeffs=Coeffs[:-1],
+                                                reduce_dim=False)
+            ys = np.sum(alphas[:-1] * fdata * dCdS[:-1] * dS, axis=0) 
 
         elif method == "right_endpoint":
-            ys = sum(
-                [
-                    alphas[i + 1]
-                    * Fs[i + 1](xs, zs)
-                    * dCdS[i + 1]
-                    * dS[i]
-                    for i in range(Nz - 1)
-                ]
-            )
-
+            # ys = sum(
+            #     [
+            #         alphas[i + 1]
+            #         * Fs[i + 1](xs, zs)
+            #         * dCdS[i + 1]
+            #         * dS[i]
+            #         for i in range(Nz - 1)
+            #     ]
+            # )
+            fdata = self.Slab.vectorized_fields(Cs[1:], xs, zs, 
+                                                Coeffs=Coeffs[1:],
+                                                reduce_dim=False)
+            ys = np.sum(alphas[1:] * fdata * dCdS[1:] * dS, axis=0) 
+            
         elif method == "trapezoid":
-            ys = alphas[0] * Fs[0](xs, zs) * dCdS[0] * dS[0]
-            ys += sum(
-                [
-                    alphas[i]
-                    * Fs[i](xs, zs)
-                    * dCdS[i]
-                    * (dS[i] + dS[i - 1])
-                    for i in range(1, Nz - 1)
-                ]
-            )
-            ys += alphas[-1] * Fs[-1](xs, zs) * dCdS[-1] * dS[-1]
+            # ys = alphas[0] * Fs[0](xs, zs) * dCdS[0] * dS[0]
+            # ys += sum(
+            #     [
+            #         alphas[i]
+            #         * Fs[i](xs, zs)
+            #         * dCdS[i]
+            #         * (dS[i] + dS[i - 1])
+            #         for i in range(1, Nz - 1)
+            #     ]
+            # )
+            # ys += alphas[-1] * Fs[-1](xs, zs) * dCdS[-1] * dS[-1]
+            # ys *= 1 / 2
+            fdata = self.Slab.vectorized_fields(Cs, xs, zs, 
+                                                Coeffs=Coeffs,
+                                                reduce_dim=False)
+            ys = alphas[0] * fdata[0] * dCdS[0] * dS[0]
+            middS = dS[1:] + dS[:-1]
+            ys += np.sum(alphas[1:-1] * fdata[1:-1] * dCdS[1:-1] * middS, 
+                         axis=0) 
+            ys += alphas[-1] * fdata[-1] * dCdS[-1] * dS[-1]
             ys *= 1 / 2
 
         elif method == "simpsons":
@@ -638,29 +677,41 @@ when providing input field f0.")
                 raise ValueError("Contour must have odd number of \
 points points (even number of intervals) for Simpsons rule.")
 
-            set_dS = set(np.round(dS, decimals=12))
+            set_dS = set(np.round(dS.flatten(), decimals=12))
             if len(set_dS) != 1:
                 raise ValueError("Simpsons rule requires equally \
 spaced spaced intervals.")
 
             dS = set_dS.pop()
-            upper = int((len(Cs) - 1) / 2) + 1
-            ys = alphas[0] * Fs[0](xs, zs) * dCdS[0]
-            ys += 4 * sum(
-                [
-                    alphas[2 * i - 1]
-                    * Fs[2 * i - 1](xs, zs)
-                    * dCdS[2 * i - 1]
-                    for i in range(1, upper)
-                ]
-            )
-            ys += 2 * sum(
-                [
-                    alphas[2 * i] * Fs[2 * i](xs, zs) * dCdS[2 * i]
-                    for i in range(1, upper - 1)
-                ]
-            )
-            ys += alphas[-1] * Fs[-1](xs, zs) * dCdS[-1]
+            # upper = int((len(Cs) - 1) / 2) + 1
+            # ys = alphas[0] * Fs[0](xs, zs) * dCdS[0]
+            # ys += 4 * sum(
+            #     [
+            #         alphas[2 * i - 1]
+            #         * Fs[2 * i - 1](xs, zs)
+            #         * dCdS[2 * i - 1]
+            #         for i in range(1, upper)
+            #     ]
+            # )
+            # ys += 2 * sum(
+            #     [
+            #         alphas[2 * i] * Fs[2 * i](xs, zs) * dCdS[2 * i]
+            #         for i in range(1, upper - 1)
+            #     ]
+            # )
+            # ys += alphas[-1] * Fs[-1](xs, zs) * dCdS[-1]
+            # ys *= 1 / 3 * dS
+            fdata = self.Slab.vectorized_fields(Cs, xs, zs, 
+                                                Coeffs=Coeffs,
+                                                reduce_dim=False)
+            odds = slice(1, -1, 2)
+            evens = slice(2, -2, 2)
+            ys = alphas[0] * fdata[0] * dCdS[0]
+            ys += 4 * np.sum(alphas[odds] * fdata[odds] * dCdS[odds], 
+                             axis=0)
+            ys += 2 * np.sum(alphas[evens] * fdata[evens] * dCdS[evens], 
+                             axis=0)
+            ys += alphas[-1] * fdata[-1] * dCdS[-1]
             ys *= 1 / 3 * dS
 
         return ys
@@ -712,17 +763,17 @@ spaced spaced intervals.")
         for contour in contours:
 
             if self.compute_class_I:
-                alphas, Fs = contour['alphas_I'], contour['fields_I']
-                ys = self.quadrature(xs, zs, alphas, Fs, contour,
-                                     method=method)
+                ys = self.quadrature(xs, zs, contour, method=method,
+                                     compute_class= 'I')
                 result += ys
 
             if self.compute_class_II:
-                alphas, Fs = contour['alphas_II'], contour['fields_II']
-                ys = self.quadrature(xs, zs, alphas, Fs, contour,
-                                     method=method)
+                ys = self.quadrature(xs, zs, contour, method=method,
+                                     compute_class= 'II')
                 result += ys
-
+                
+        # Remove extra dimensions of length one
+        result = np.squeeze(result)
         if portion == 'full':
             result += self.Guided(xs, zs)
         return result
