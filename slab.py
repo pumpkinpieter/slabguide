@@ -384,23 +384,25 @@ try again.")
         # )[..., 0]
 
         # Give inputs at least one non-zero dimension
-        try:
-            len(Z0)
-            Z0 = np.array(Z0)
-        except TypeError:
-            Z0 = np.array([Z0])
-        try:
-            len(ni)
-            ni = np.array(ni)
-        except TypeError:
-            ni = np.array([ni])
+        # try:
+        #     len(Z0)
+        #     Z0 = np.array(Z0)
+        # except TypeError:
+        #     Z0 = np.array([Z0])
+        # try:
+        #     len(ni)
+        #     ni = np.array(ni)
+        # except TypeError:
+        #     ni = np.array([ni])
+        Z0 = np.atleast_1d(Z0)
+        ni = np.atleast_1d(ni)
             
         # Perform main calculation
         result = np.sqrt((ni[np.newaxis] ** 2 - self.n0**2) * self.K0**2
                          + Z0[..., np.newaxis] ** 2, dtype=complex)
 
         # Put original input back if ni == n0
-        nmat = ni[np.newaxis]* np.ones_like(result)
+        nmat = ni[np.newaxis] * np.ones_like(result)
         Z0mat = Z0[...,np.newaxis] *  np.ones_like(result)
         result = np.where(nmat == self.n0, Z0mat, result)
 
@@ -527,6 +529,7 @@ try again.")
         Ztype_right="standard",
         plane="Z",
         derivate=False,
+        base_Zis=None,
     ):
         '''
         Matrix giving coefficients of field in next layer from previous.
@@ -619,8 +622,12 @@ try again.")
 
         elif plane == "Z":
             Z0 = C
-            Z_left = self.Zi_from_Z0(C, n_left)
-            Z_right = self.Zi_from_Z0(C, n_right)
+            if base_Zis is not None:
+                Z_left = base_Zis[..., interface_idx-1]
+                Z_right = base_Zis[..., interface_idx]
+            else:
+                Z_left = self.Zi_from_Z0(C, n_left)
+                Z_right = self.Zi_from_Z0(C, n_right)
 
         else:
             Psi0 = C
@@ -731,6 +738,7 @@ try again.")
         up_to_region=-1,
         plane="Z",
         derivate=False,
+        base_Zis=None,
     ):
         '''
         Matrix giving transverse field coefficients on outer right region of
@@ -793,7 +801,7 @@ try again.")
                 T = (
                     self.transfer_matrix(C, i, field_type=field_type,
                                          Ztype_left=L, Ztype_right=R,
-                                         plane=plane,
+                                         plane=plane, base_Zis=base_Zis,
                                          ) @ T
                 )
             return T
@@ -823,6 +831,7 @@ try again.")
                                              field_type=field_type,
                                              Ztype_left=L, Ztype_right=R,
                                              plane=plane, derivate=derivate,
+                                             base_Zis=base_Zis,
                                              ) @ T
                     )
                 S += T
@@ -906,18 +915,24 @@ try again.")
 
         if (even or odd) and (not self.is_symmetric):
             raise ValueError("Non-symmetric guides don't have even/odd modes.")
-
+        
+        if plane == 'Z':
+            base_Zis = self.Zi_from_Z0(C, self.ns)
+        else:
+            base_Zis = None
+            
         if mode_type == "guided":
             if even or odd:
                 s = -1
                 M = self.transmission_matrix(
                     C, plane=plane, field_type=field_type, derivate=derivate,
-                    up_to_region=int(len(self.Rhos)/2)-1)
+                    up_to_region=int(len(self.Rhos)/2)-1, base_Zis=base_Zis)
                 if odd:
                     s = 1
                 return M[..., 0, 1] + s * M[..., 1, 1]
             M = self.transmission_matrix(
-                C, plane=plane, field_type=field_type, derivate=derivate
+                C, plane=plane, field_type=field_type, derivate=derivate,
+                base_Zis=base_Zis
             )
             return M[..., 1, 1]
 
@@ -926,12 +941,13 @@ try again.")
                 s = -1
                 M = self.transmission_matrix(
                     C, plane=plane, field_type=field_type, derivate=derivate,
-                    up_to_region=int(len(self.Rhos)/2))
+                    up_to_region=int(len(self.Rhos)/2), base_Zis=base_Zis)
                 if odd:
                     s = 1
                 return M[..., 0, 0] + s * M[..., 1, 0]
             M = self.transmission_matrix(
-                C, plane=plane, field_type=field_type, derivate=derivate
+                C, plane=plane, field_type=field_type, derivate=derivate,
+                base_Zis=base_Zis,
             )
             return M[..., 0, 0]
 
@@ -950,6 +966,8 @@ try again.")
         plane="Z",
     ):
         """Determinant of transmission matrix."""
+        if self.ns[0] == self.ns[-1]:
+            return np.ones_like(C)
         try:
             len(C)
             C = np.array(C, dtype=complex)
@@ -989,6 +1007,7 @@ try again.")
         up_to_region=-1,
         rounding=12,
         manual_coeffs=None,
+        base_Zis=None,
         # even=False,
         # odd=False,
     ):
@@ -1039,6 +1058,7 @@ try again.")
                 Ztype_far_right=Ztype_far_right,
                 plane=plane,
                 derivate=False,
+                base_Zis=base_Zis,
             )
 
             M_prime = self.transmission_matrix(
@@ -1048,6 +1068,7 @@ try again.")
                 Ztype_far_right=Ztype_far_right,
                 plane=plane,
                 derivate=True,
+                base_Zis=base_Zis,
             )
 
             d_prime, c = M_prime[..., 1, 1], M[..., 1, 0]
@@ -1067,6 +1088,7 @@ try again.")
                 Ztype_far_right=Ztype_far_right,
                 plane=plane,
                 derivate=False,
+                base_Zis=base_Zis,
             )
 
             M_prime = self.transmission_matrix(
@@ -1076,6 +1098,7 @@ try again.")
                 Ztype_far_right=Ztype_far_right,
                 plane=plane,
                 derivate=True,
+                base_Zis=base_Zis,
             )
 
             a_prime, b = M_prime[..., 0, 0], M[..., 0, 1]
@@ -1091,7 +1114,8 @@ try again.")
                 Normalizer = OurMethod(self, field_type=field_type,
                                        plane=plane)
 
-            M0 = Normalizer.normalization(C, sign=sign)
+            M0 = Normalizer.normalization(C, sign=sign, base_Zis=base_Zis)
+            
         if manual_coeffs is not None:
             M0[..., :, 0] = manual_coeffs
 
@@ -1129,6 +1153,7 @@ try again.")
                 Ztype_left=Ztypes[i - 1],
                 Ztype_right=Ztypes[i],
                 plane=plane,
+                base_Zis=base_Zis,
             )
 
             # Apply T to coefficient vector to get coeffs in next region.
@@ -1335,77 +1360,10 @@ arrays for xs and zs to levarage product nature of fields.")
 
         return Field(F)
 
-    # def vectorized_fields(
-    #     self,
-    #     C,
-    #     x,
-    #     z=0,
-    #     Normalizer=None,
-    #     field_type="TE",
-    #     mode_type="radiation",
-    #     sign="+1",
-    #     plane="Z",
-    #     Coeffs=None,
-    # ):
-    #     """Return value of field with propagation constant C at x, z in plane
-    #     determined by 'plane'. Vectorized in C.
-
-    #     Note: a goal is to fully vectorize the fields both in C, x and z."""
-
-    #     if plane not in ["Z", "Beta", "Psi"]:
-    #         raise ValueError("Plane must be 'Beta', 'Z' or 'Psi'.")
-
-        # i = self.region_index(x)
-
-        # if plane == "Beta":
-        #     Beta = C
-        #     Zi = np.array(self.Zi_from_Beta(C, ni=self.ns[i]))
-
-        # elif plane == "Z":
-        #     Zi = np.array(self.Zi_from_Z0(C, ni=self.ns[i]))
-        #     Beta = self.Beta_from_Zi(Zi, ni=self.ns[i])
-
-        # else:
-        #     Beta = self.K0 * self.n0 * np.cos(C)
-        #     Zi = (
-        #         self.K0
-        #         * self.ns[i]
-        #         * np.sin(self.Psi_i_from_Psi0(C, self.ns[i]))
-        #     )
-
-        # if Coeffs is None:
-        #     Coeffs = self.coefficients(
-        #         C,
-        #         Normalizer=Normalizer,
-        #         up_to_region=i,
-        #         mode_type=mode_type,
-        #         field_type=field_type,
-        #         sign=sign,
-        #         plane=plane,
-        #     )
-
-        # return (Coeffs[..., 0, i] * np.exp(1j * Zi * x)
-        #         + Coeffs[..., 1, i] * np.exp(-1j * Zi * x)
-        #         ) * np.exp(1j * Beta * z)
         
     def vectorized_fields(self, Cs, xs, zs=0, Normalizer=None, field_type="TE", 
                           mode_type="radiation", sign="+1", plane="Z", 
-                          Coeffs=None, reduce_dim=True):
-        # try:
-        #     len(Cs)
-        #     Cs = np.array(Cs)
-        # except TypeError:
-        #     Cs = np.array([Cs])
-        # try:
-        #     len(xs)
-        #     xs = np.array(xs)
-        # except TypeError:
-        #     xs = np.array([xs])
-        # try:
-        #     len(zs)
-        #     zs = np.array(zs)
-        # except TypeError:
-        #     zs = np.array([zs])
+                          Coeffs=None, reduce_dim=True, base_Zis=None):
         
         Cs = np.atleast_1d(Cs)
         xs = np.atleast_1d(xs)
@@ -1420,7 +1378,10 @@ arrays for xs and zs to levarage product nature of fields.")
     
         elif plane == "Z":
             # get Zi value for each x and Z0 (here Cs are Z0s since plane == 'Z')
-            Zi = self.Zi_from_Z0(Cs, ns)
+            if base_Zis is not None:
+                Zi = base_Zis[..., self.region_index(xs)]
+            else:
+                Zi = self.Zi_from_Z0(Cs, ns, reduce_dim=False)
             Beta = self.Beta_from_Zi(Cs)
         
         else:
@@ -1432,11 +1393,12 @@ arrays for xs and zs to levarage product nature of fields.")
             Coeffs = self.coefficients(Cs, Normalizer=Normalizer, 
                                        mode_type=mode_type,
                                        field_type=field_type,
-                                       sign=sign, plane=plane)
+                                       sign=sign, plane=plane,
+                                       base_Zis=base_Zis)
             
-        # Adjust shape of Zi for len(xs) == 1 case
-        if len(xs) == 1:
-            Zi = Zi[..., np.newaxis]
+        # # Adjust shape of Zi for len(xs) == 1 case
+        # if len(xs) == 1:
+        #     Zi = Zi[..., np.newaxis]
             
         # repeat coefficients in regions with same refractive indices
         MultiCoeffs = Coeffs[..., self.region_index(xs)]

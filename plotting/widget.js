@@ -1,6 +1,6 @@
 import * as THREE from "https://esm.sh/three";
 import { OrbitControls } from "https://esm.sh/three/examples/jsm/controls/OrbitControls.js";
-import {GUI} from "https://esm.sh/lil-gui"
+import { GUI } from "https://esm.sh/lil-gui"
 import * as CMAP from "https://esm.sh/colormap";
 import { LineGeometry } from 'https://esm.sh/three/addons/lines/LineGeometry.js';
 import { Line2 } from 'https://esm.sh/three/addons/lines/Line2.js';
@@ -9,15 +9,15 @@ import { FontLoader } from 'https://esm.sh/three/addons/loaders/FontLoader.js';
 import { TextGeometry } from 'https://esm.sh/three/addons/geometries/TextGeometry.js';
 
 const loader2 = new FontLoader();
-const font = await loader2.loadAsync( 'https://esm.sh/three@0.183.0/examples/fonts/helvetiker_regular.typeface.json' );
+const font = await loader2.loadAsync('https://esm.sh/three@0.183.0/examples/fonts/helvetiker_regular.typeface.json');
 
 function render({ model, el }) {
 
     //#region Utilities
 
-    function setGroupColor(group, color){
+    function setGroupColor(group, color) {
         // change the color of group elements
-        for ( let i = 0; i < group.children.length; i++ ) {
+        for (let i = 0; i < group.children.length; i++) {
             group.children[i].material.color = color;
         }
     }
@@ -27,7 +27,7 @@ function render({ model, el }) {
     ////////////// StopWatch Class //////////////////
 
     class StopWatch extends THREE.Timer {
-        constructor(paused = false){
+        constructor(paused = false) {
             super();
             this.time = 0.0;
             this.startTime = 0.0;
@@ -37,44 +37,44 @@ function render({ model, el }) {
             this.lastResetTime = 0.0;
             this.paused = paused;
         }
-        
-        reset(){
+
+        reset() {
             this.lastResetTime = super.getElapsed();
             this.totalPause = 0.0;
             this.totalRun = 0.0;
             this.startTime = this.lastResetTime;
             this.stopTime = this.lastResetTime;
         }
-        pause(){
-            if(this.paused){
+        pause() {
+            if (this.paused) {
                 // already paused, start again
                 this.startTime = super.getElapsed();
                 this.totalPause += this.startTime - this.stopTime;
                 this.paused = false;
             }
-            else{ // currently running, stop it
+            else { // currently running, stop it
                 this.stopTime = super.getElapsed();
                 this.totalRun += this.stopTime - this.startTime;
                 this.paused = true;
             }
         }
-        run(){
+        run() {
             super.update();
-            if(this.paused){
+            if (this.paused) {
                 this.time = this.totalRun;
             }
-            else{
+            else {
                 this.time = super.getElapsed() - this.totalPause - this.lastResetTime;
             }
         }
     }
     const stopwatch = new StopWatch();
     //#endregion
-    
+
     //#region Import Data and Set Data Limits
 
     //////////// Get Data from Model //////////////
-    
+
     let trig_bytes = new Uint32Array(
         model.get("_trig_bytes").buffer,
     );
@@ -102,40 +102,46 @@ function render({ model, el }) {
     let Rhos = new Float32Array(
         model.get("_rho_bytes").buffer
     );
-
+    let Nmesh = new Uint32Array(
+        model.get("_Nmesh").buffer
+    );
+    Nmesh = Nmesh[0];
     ////////// Get Data Limits /////////////////
-    
+
     const xmin = Math.min(...x0s);
     const xmax = Math.max(...x0s);
-        
+
     const zmax = Math.max(...f0s);
     const zmin = -Math.max(...f0s);
-        
+
     const ymin = Math.min(...y0s);
     const ymax = Math.max(...y0s);
-    
-    const ytranslation = -(ymax - ymin)/2.0;
 
+    const ywidth = ymax - ymin;
+    const xwidth = xmax - xmin;
+    const ytranslation = ywidth / 2.0;
+    const Nbasepts = x0s.length * y0s.length;
+    const Nvals = 2 * Nbasepts;
     //#endregion
 
     //#region Get Colormaps and set LUT array
 
     //////////// Get Colormaps //////////////////
-    
+
     let viridis = CMAP.default({
         colormap: 'viridis',
         nshades: 256,
         format: 'float',
         alpha: 1
     })
-    
+
     let magma = CMAP.default({
         colormap: 'magma',
         nshades: 256,
         format: 'float',
         alpha: 1
     })
-    
+
     let rainbow = CMAP.default({
         colormap: 'rainbow',
         nshades: 256,
@@ -149,7 +155,7 @@ function render({ model, el }) {
         format: 'float',
         alpha: 1
     })
-    
+
     let copper = CMAP.default({
         colormap: 'copper',
         nshades: 256,
@@ -158,36 +164,36 @@ function render({ model, el }) {
     })
 
     var viridis_lut = [];
-    for (let n=0; n < 256; n++) {
+    for (let n = 0; n < 256; n++) {
         viridis_lut.push(new THREE.Vector3(viridis[n][0], viridis[n][1], viridis[n][2]));
     }
-    
+
     var magma_lut = [];
-    for (let n=0; n < 256; n++) {
+    for (let n = 0; n < 256; n++) {
         magma_lut.push(new THREE.Vector3(magma[n][0], magma[n][1], magma[n][2]));
     }
-    
+
     var rainbow_lut = [];
-    for (let n=0; n < 256; n++) {
+    for (let n = 0; n < 256; n++) {
         rainbow_lut.push(new THREE.Vector3(rainbow[n][0], rainbow[n][1], rainbow[n][2]));
     }
 
     var bone_lut = [];
-    for (let n=0; n < 256; n++) {
+    for (let n = 0; n < 256; n++) {
         bone_lut.push(new THREE.Vector3(bone[n][0], bone[n][1], bone[n][2]));
     }
-    
+
     var copper_lut = [];
-    for (let n=0; n < 256; n++) {
+    for (let n = 0; n < 256; n++) {
         copper_lut.push(new THREE.Vector3(copper[n][0], copper[n][1], copper[n][2]));
     }
-    
+
     const luts = {
-      'viridis': viridis_lut,
-      'magma': magma_lut,
-      'bone': bone_lut,
-      'copper': copper_lut,
-      'rainbow': rainbow_lut,
+        'viridis': viridis_lut,
+        'magma': magma_lut,
+        'bone': bone_lut,
+        'copper': copper_lut,
+        'rainbow': rainbow_lut,
     }
 
     //#endregion
@@ -198,47 +204,73 @@ function render({ model, el }) {
 
     let container = document.createElement("div");
     let subcontainer = document.createElement("div");
-    
+
     container.id = 'PlotWindow';
     container.style.height = "35rem";
     container.style.width = "100%";
     subcontainer.setAttribute(
-      'style',
-      'position: relative; resize:neither; overflow:auto;'
+        'style',
+        'position: relative; resize:neither; overflow:auto;'
     );
 
     container.appendChild(subcontainer);
     el.appendChild(container);
 
     ///////////  Scene, Camera, Renderer, Controls /////////
-    
+
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color( 'black' );
-    
+    scene.background = new THREE.Color('black');
+
     let ratio = container.clientWidth / container.clientHeight
-    const camera = new THREE.PerspectiveCamera(50, ratio,
-                                               0.1, 2000);
-    camera.position.set( 0, 2.25*ytranslation, .4*(xmax-xmin));
-    camera.up.set( 0, 0, 1 );
+
+    // Set fov and camera location for good initial view
+
+    let gamma, gamma_deg, fov, alpha, D;
+
+    const s = .95;  // fraction of window width filled by mesh at opening
+    const f = .25;  // fraction of window height at which mesh starts at opening
+
+    const check = s * xwidth * (1 / 2 - f) / (ratio * ytranslation)
+
+    // If check < 1, we can find angle and distance for camera for a good preset fov (45 deg)
+    if (check < .95) {
+        gamma_deg = 22.5;
+        gamma = gamma_deg * Math.PI / 180;
+        fov = 2 * gamma_deg;
+
+        alpha = Math.asin(xwidth * (1 / 2 - f) / (ratio * ytranslation * s));
+        D = ytranslation * (Math.sin(alpha) / (2 * Math.tan(gamma) * (1 / 2 - f)) + Math.cos(alpha));
+    }
+    else {  // If not, we go with our first method to ensure mesh fits on screen (though with some fallbacks in case fov would get too large)
+        alpha = Math.PI / 6;
+        D = Math.max(2.5 * ytranslation, 5 * zmax);
+        const b1 = Math.atan(ytranslation * Math.sin(alpha) / (D - ytranslation * Math.cos(alpha)));
+        const b2 = Math.atan(xwidth / (2 * ratio * (D - ytranslation * Math.cos(alpha))));
+        gamma = 1.3 * Math.max(Math.abs(b1), Math.abs(b2)) / (Math.PI / 180);
+        fov = Math.max(Math.min(90, 2 * gamma), 50);
+    }
+    const camera = new THREE.PerspectiveCamera(fov, ratio, .01, 1000);
+    camera.up.set(0, 0, 1);
+    camera.position.set(0, -D * Math.cos(alpha), D * Math.sin(alpha));
+
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     subcontainer.appendChild(renderer.domElement);
-    
-    const controls = new OrbitControls(camera, renderer.domElement);
 
+    const controls = new OrbitControls(camera, renderer.domElement);
     //#endregion
 
     //#region Axis Helper
 
     //////////////  Add AxesHelper with Labels //////////////
-    
+
     const axes = new THREE.Group();
 
     const axesLength = 1.25;
-    const axesHelper = new THREE.AxesHelper( axesLength );
-    axesHelper.translateX(1.08*xmin);
-    axesHelper.translateY(1.08*ytranslation);
-    
+    const axesHelper = new THREE.AxesHelper(axesLength);
+    axesHelper.translateX(xmin - .5);
+    axesHelper.translateY(-ytranslation - .5);
+
     axes.add(axesHelper)
 
     const textMaterial = new THREE.MeshBasicMaterial({
@@ -246,16 +278,16 @@ function render({ model, el }) {
         color: 'silver',
         // roughness: 1,
     });
-    
+
     const fontsize = .25;
-    const fontdepth= .075;
-    
+    const fontdepth = .075;
+
     const textGeometryX = new TextGeometry('X', {
         font: font,
         size: fontsize,
         depth: fontdepth,
     });
-    
+
     const textGeometryY = new TextGeometry('Y', {
         font: font,
         size: fontsize,
@@ -266,50 +298,51 @@ function render({ model, el }) {
         size: fontsize,
         depth: fontdepth,
     });
-    
+
     const textX = new THREE.Mesh(textGeometryX, textMaterial);
     const textY = new THREE.Mesh(textGeometryY, textMaterial);
     const textZ = new THREE.Mesh(textGeometryZ, textMaterial);
 
-    textX.rotateX(Math.PI/2);
+    textX.rotateX(Math.PI / 2);
 
-    textX.position.x = axesHelper.position.x + 1.05*axesLength;
-    textX.position.y = axesHelper.position.y + .5*fontdepth;
-    textX.position.z = axesHelper.position.z - .5*fontsize;
+    textX.position.x = axesHelper.position.x + 1.05 * axesLength;
+    textX.position.y = axesHelper.position.y + .5 * fontdepth;
+    textX.position.z = axesHelper.position.z - .5 * fontsize;
     axes.add(textX);
 
-    textY.rotateX(Math.PI/2);
-    textY.rotateY(Math.PI/2);
-    textY.position.x = axesHelper.position.x - .5*fontdepth;
-    textY.position.y = axesHelper.position.y + 1.05*axesLength;
-    textY.position.z = axesHelper.position.z - .5*fontsize;
+    textY.rotateX(Math.PI / 2);
+    textY.rotateY(Math.PI / 2);
+    textY.position.x = axesHelper.position.x - .5 * fontdepth;
+    textY.position.y = axesHelper.position.y + 1.05 * axesLength;
+    textY.position.z = axesHelper.position.z - .5 * fontsize;
     axes.add(textY);
 
-    textZ.rotateX(Math.PI/2);
-    textZ.position.x = axesHelper.position.x - .5*fontsize ;
-    textZ.position.y = axesHelper.position.y + .5*fontdepth;
-    textZ.position.z = axesHelper.position.z + 1.05*axesLength + .5*fontsize;
+    textZ.rotateX(Math.PI / 2);
+    textZ.position.x = axesHelper.position.x - .5 * fontsize;
+    textZ.position.y = axesHelper.position.y + .5 * fontdepth;
+    textZ.position.z = axesHelper.position.z + 1.05 * axesLength + .5 * fontsize;
     axes.add(textZ);
 
-    scene.add( axes );
+    scene.add(axes);
 
     //#endregion
 
     //#region Uniforms
 
-    const uniforms = {	
-        time: {value: stopwatch.time},
-        speed: {value: 2.5},
-        scale: {value: 1.0},
-        guided_on: {value:true},
-        evanescent_on: {value:true},
-        propagating_on: {value:true},
-        vLut: {value: luts['copper']},
-        colormax: {value:zmax},
-        colormin: {value:zmin},
-        colorscale: {value:1.0},
-        gridlinescale: {value:.7},
-        shift: {value: 1.0},
+    const uniforms = {
+        time: { value: stopwatch.time },
+        speed: { value: 2.5 },
+        scale: { value: 1.0 },
+        guided_on: { value: true },
+        evanescent_on: { value: true },
+        propagating_on: { value: true },
+        vLut: { value: luts['copper'] },
+        colormax: { value: zmax },
+        colormin: { value: zmin },
+        colorscale: { value: 1.0 },
+        gridlinescale: { value: .7 },
+        shift: { value: 1.0 },
+        mesh_number: { value: 0 },
     }
 
     // const big_uniforms = THREE.UniformsUtils.merge( [ THREE.UniformsLib[ 'lights' ], THREE.UniformsLib[ 'fog' ], uniforms ] );
@@ -317,13 +350,12 @@ function render({ model, el }) {
     // big_uniforms.update;
 
     //#endregion
-    
+
     //#region Vertex and Fragment Shaders
     const vertShader = `
         attribute vec2 evanescent;
         attribute vec2 propagating;
         attribute vec2 guided;
-        attribute vec2 height;
 
         uniform bool evanescent_on;
         uniform bool propagating_on;
@@ -365,7 +397,7 @@ function render({ model, el }) {
             gl_Position = projectionMatrix * modelViewMatrix * result;
         }`;
 
-    const fragShader =  `
+    const fragShader = `
     varying vec3 vColor;
     void main(){
       gl_FragColor = vec4(vColor,1.0);
@@ -373,17 +405,9 @@ function render({ model, el }) {
 
     //#endregion
 
-    //#region Main Mesh
-    const geometry = new THREE.BufferGeometry();
-    geometry.setIndex( new THREE.Uint32BufferAttribute(trig_bytes, 1));
-    geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( base_bytes, 3 ) );
-    geometry.setAttribute( 'guided', new THREE.Float32BufferAttribute( guided_bytes, 2 ) );
-    geometry.setAttribute( 'propagating', new THREE.Float32BufferAttribute( propagating_bytes, 2 ) );
-    geometry.setAttribute( 'evanescent', new THREE.Float32BufferAttribute( evanescent_bytes, 2 ) );
+    //#region Main Mesh(es)
 
-    geometry.computeVertexNormals();
-    
-    const material_shader = new THREE.ShaderMaterial( {
+    const material_shader = new THREE.ShaderMaterial({
         uniforms: uniforms,
         vertexShader: vertShader,
         fragmentShader: fragShader,
@@ -391,67 +415,66 @@ function render({ model, el }) {
         wireframe: false,
         // lights : true,  // Do not uncomment lights and fog without merging uniforms into big_uniforms and changing things where necessary
         // fog: true,
-    } );
+    });
 
-    const mesh = new THREE.Mesh( geometry, material_shader );
-    // mesh.material.transparent = false;
+    const meshes = [];
+    for (let i = 0; i < Nmesh; i++) {
+        let geometry = new THREE.BufferGeometry();
+        //   const geometry = new THREE.BufferGeometry();
+        geometry.setIndex(new THREE.Uint32BufferAttribute(trig_bytes, 1));
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(base_bytes, 3));
+        geometry.setAttribute('guided', new THREE.Float32BufferAttribute(guided_bytes.slice(i * Nvals, (i + 1) * Nvals), 2));
+        geometry.setAttribute('propagating', new THREE.Float32BufferAttribute(propagating_bytes.slice(i * Nvals, (i + 1) * Nvals), 2));
+        geometry.setAttribute('evanescent', new THREE.Float32BufferAttribute(evanescent_bytes.slice(i * Nvals, (i + 1) * Nvals), 2));
+        geometry.computeVertexNormals();
+
+
+        const mesh = new THREE.Mesh(geometry, material_shader);
+        scene.add(mesh);
+        mesh.visible = false;
+        mesh.translateY(-ytranslation);
+        meshes.push(mesh)
+    }
+    const start_idx = uniforms.mesh_number.value;
+
+    var mesh = meshes[start_idx];
     mesh.visible = true;
-    scene.add( mesh );
-    mesh.translateY(ytranslation);
-    
-    //#endregion
 
-    //#region Wireframe Overlay (not used)
-    // const wiremat = material_shader.clone();
-    // wiremat.fragmentShader =  `
-    //     uniform float gridlinescale;
-    //     varying vec3 vColor;
-    //     void main(){
-    //         gl_FragColor = vec4(gridlinescale*vColor, 1.0);
-    //     }`;
-
-    // wiremat.wireframe = true;
-    // wiremat.uniforms = uniforms;
-    // const wiremesh = new THREE.Mesh( geometry, wiremat );
-    // scene.add( wiremesh );
-    // wiremesh.visible = false;
-    // wiremesh.translateY(ytranslation);
-    
     //#endregion
 
     //#region Gridlines
-    
+
     //#region Gridline Setup
 
-    const gridlines = new THREE.Group();
-    scene.add(gridlines);
+    // const gridlines = new THREE.Group();
+    // scene.add(gridlines);
 
     let base_x0step = 3;
     let base_y0step = 5;
 
     // Function to set complex valued height attributes correctly for LineGeometry
-    function setHeights( array, geometry, name ) {
+    function setHeights(array, geometry, name) {
         // converts [ z1r, z1i, z2r, z2i,... ] to pairs format [z1r, z1i, z2r, z2i, z2r, z2i, ...]
         // and sets as attributes name+Start and name+End
         const length = array.length - 2;
-        const data = new Float32Array( 2 * length );
-    
-        for ( let i = 0; i < length; i+=2 ) {
-            data[ 2 * i ] = array[ i ];
-            data[ 2 * i + 1 ] = array[ i + 1 ];
-    
-            data[ 2 * i + 2 ] = array[ i + 2];
-            data[ 2 * i + 3 ] = array[ i + 3 ];
-            }
-        const instanceBuffer = new THREE.InstancedInterleavedBuffer( data, 4, 1 ); // xyz, xyz
-        geometry.setAttribute( name+'Start', new THREE.InterleavedBufferAttribute( instanceBuffer, 2, 0 ) ); // xyz
-        geometry.setAttribute( name+'End', new THREE.InterleavedBufferAttribute( instanceBuffer, 2, 2 ) ); // xyz
+        const data = new Float32Array(2 * length);
+
+        for (let i = 0; i < length; i += 2) {
+            data[2 * i] = array[i];
+            data[2 * i + 1] = array[i + 1];
+
+            data[2 * i + 2] = array[i + 2];
+            data[2 * i + 3] = array[i + 3];
+        }
+        const instanceBuffer = new THREE.InstancedInterleavedBuffer(data, 4, 1); // xyz, xyz
+        geometry.setAttribute(name + 'Start', new THREE.InterleavedBufferAttribute(instanceBuffer, 2, 0)); // xyz
+        geometry.setAttribute(name + 'End', new THREE.InterleavedBufferAttribute(instanceBuffer, 2, 2)); // xyz
     }
 
-    let gridline_material = new LineMaterial( {
+    let gridline_material = new LineMaterial({
         linewidth: 1.,
         vertexColors: true,
-    } );
+    });
 
     gridline_material.uniforms.time = uniforms.time;
     gridline_material.uniforms.scale = uniforms.scale;
@@ -464,8 +487,10 @@ function render({ model, el }) {
     gridline_material.uniforms.colorscale = uniforms.colorscale;
     gridline_material.uniforms.colormin = uniforms.colormin;
     gridline_material.uniforms.colormax = uniforms.colormax;
+    gridline_material.uniforms.y0step = { value: base_y0step };
+    gridline_material.uniforms.x0step = { value: base_x0step };
 
-    gridline_material.onBeforeCompile = function ( shader ) {
+    gridline_material.onBeforeCompile = function (shader) {
         shader.vertexShader = 'uniform float time;\n' + shader.vertexShader;
         shader.vertexShader = 'uniform float scale;\n' + shader.vertexShader;
         shader.vertexShader = 'uniform float speed;\n' + shader.vertexShader;
@@ -537,21 +562,20 @@ function render({ model, el }) {
             'vec4 end = modelViewMatrix * vec4( instanceEnd, 1.0 );',
             'vec4 end = modelViewMatrix * vec4( vec3(instanceEnd.x, instanceEnd.y, scale * resultEnd), 1.0 );'
         );
-    gridline_material.userData.shader = shader;
-    // console.log(shader.vertexShader);
+        gridline_material.userData.shader = shader;
     };
 
     // Set base gridline positions, translate resultant line later by ybase/xbase
     const TVGLBasePositions = new Float32Array(3 * x0s.length);
     const LGLBasePositions = new Float32Array(3 * y0s.length);
 
-    for (let i = 0; i < x0s.length; i++){
+    for (let i = 0; i < x0s.length; i++) {
         TVGLBasePositions[3 * i] = x0s[i];
         TVGLBasePositions[3 * i + 1] = 0;
         TVGLBasePositions[3 * i + 2] = 0;
     };
 
-    for (let i = 0; i < y0s.length; i++){
+    for (let i = 0; i < y0s.length; i++) {
         LGLBasePositions[3 * i] = 0;
         LGLBasePositions[3 * i + 1] = y0s[i];
         LGLBasePositions[3 * i + 2] = 0;
@@ -561,134 +585,179 @@ function render({ model, el }) {
 
     //#region Transverse Gridlines
 
-    const transverse_gridlines = new THREE.Group();
-    gridlines.add(transverse_gridlines);
+    // const transverse_gridlines = new THREE.Group();
+    // gridlines.add(transverse_gridlines);
 
-    function makeTransvereGridlines(y0step){
+    function makeTransvereGridlines(y0step, idx, group) {
         let NTVgridlines = Math.floor((y0s.length - 1) / y0step) + 1;
-        for (let i = 1; i < NTVgridlines; i++){
+        for (let i = 1; i < NTVgridlines; i++) {
             let ybase = y0s[i * y0step];
 
-            let current_guided = guided_bytes.slice(y0step * i * 2 * x0s.length,
-            (y0step * i + 1) * 2 * x0s.length);
+            let current_guided = guided_bytes.slice(idx * Nvals, (idx + 1) * Nvals).slice(y0step * i * 2 * x0s.length,
+                (y0step * i + 1) * 2 * x0s.length);
 
-            let current_prop = propagating_bytes.slice(y0step * i * 2 * x0s.length,
-            (y0step * i + 1) * 2 * x0s.length);
+            let current_prop = propagating_bytes.slice(idx * Nvals, (idx + 1) * Nvals).slice(y0step * i * 2 * x0s.length,
+                (y0step * i + 1) * 2 * x0s.length);
 
-            let current_ev = evanescent_bytes.slice(y0step * i * 2 * x0s.length,
-            (y0step * i + 1) * 2 * x0s.length);
+            let current_ev = evanescent_bytes.slice(idx * Nvals, (idx + 1) * Nvals).slice(y0step * i * 2 * x0s.length,
+                (y0step * i + 1) * 2 * x0s.length);
 
             const temp_geometry = new LineGeometry();
-            temp_geometry.setPositions( TVGLBasePositions );
+            temp_geometry.setPositions(TVGLBasePositions);
             setHeights(current_guided, temp_geometry, 'guided');
             setHeights(current_prop, temp_geometry, 'propagating');
             setHeights(current_ev, temp_geometry, 'evanescent');
 
-            let line = new Line2( temp_geometry, gridline_material );
+            let line = new Line2(temp_geometry, gridline_material);
             line.computeLineDistances();
-            line.scale.set( 1, 1, 1 );
-            line.translateY(ybase + ytranslation);
-            transverse_gridlines.add(line);
+            line.scale.set(1, 1, 1);
+            line.translateY(ybase - ytranslation);
+            group.add(line);
         }
-    };
-    makeTransvereGridlines(base_y0step);
+        scene.add(group);
+        return group
+    }
 
+    function setTVGLSvisiblity(y0step, group) {
+        // group.visible = true;
+        let NTVgridlines = Math.floor((y0s.length - 1) / y0step) + 1;
+        for (let i = 0; i < NTVgridlines - 1; i++) {
+            group.children[i * y0step].visible = true;
+            for (let j = 1; j < y0step; j++) {
+                group.children[i * y0step + j].visible = false;
+            }
+        }
+    }
+
+    const tvgls = [];
+    for (let i = 0; i < Nmesh; i++) {
+        let group = makeTransvereGridlines(1, i, new THREE.Group());
+        group.visible = false;
+        setTVGLSvisiblity(base_y0step, group);
+        tvgls.push(group);
+    }
+
+    var current_tvgls = tvgls[start_idx];
+    current_tvgls.visible = true;
     //#endregion
 
     //#region Longitudinal Gridlines
 
-    const longitudinal_gridlines = new THREE.Group();
-    gridlines.add(longitudinal_gridlines);
+    // const longitudinal_gridlines = new THREE.Group();
+    // gridlines.add(longitudinal_gridlines);
 
-    function makeLongitudinalGridlines(x0step){
+    function makeLongitudinalGridlines(x0step, idx, group) {
         let NLgridlines = Math.floor((x0s.length - 1) / x0step) + 1;
-        for (let i = 0; i < NLgridlines; i++){
+        for (let i = 0; i < NLgridlines; i++) {
             let xbase = x0s[i * x0step];
 
             let temp_guided = [];
             let temp_prop = [];
-            let temp_ev = []
-            for (let j = 0; j < y0s.length; j++){
-                let cgs = guided_bytes.slice(2 * (i * x0step + j * x0s.length),
+            let temp_ev = [];
+            let gbs = guided_bytes.slice(idx * Nvals, (idx + 1) * Nvals);
+            let pbs = propagating_bytes.slice(idx * Nvals, (idx + 1) * Nvals);
+            let evs = evanescent_bytes.slice(idx * Nvals, (idx + 1) * Nvals);
+
+            for (let j = 0; j < y0s.length; j++) {
+                let cgs = gbs.slice(2 * (i * x0step + j * x0s.length),
                     2 * (i * x0step + j * x0s.length + 1))
                 temp_guided.push(cgs[0], cgs[1]);
-                let cps = propagating_bytes.slice(2 * (i * x0step + j * x0s.length),
+                let cps = pbs.slice(2 * (i * x0step + j * x0s.length),
                     2 * (i * x0step + j * x0s.length + 1))
                 temp_prop.push(cps[0], cps[1]);
-                let ces = evanescent_bytes.slice(2 * (i * x0step + j * x0s.length),
+                let ces = evs.slice(2 * (i * x0step + j * x0s.length),
                     2 * (i * x0step + j * x0s.length + 1))
                 temp_ev.push(ces[0], ces[1]);
             }
 
             const temp_geometry = new LineGeometry();
-            temp_geometry.setPositions( LGLBasePositions );
+            temp_geometry.setPositions(LGLBasePositions);
             setHeights(new Float32Array(temp_guided), temp_geometry, 'guided');
             setHeights(new Float32Array(temp_prop), temp_geometry, 'propagating');
             setHeights(new Float32Array(temp_ev), temp_geometry, 'evanescent');
 
-            let line = new Line2( temp_geometry, gridline_material );
+            let line = new Line2(temp_geometry, gridline_material);
             line.computeLineDistances();
-            line.scale.set( 1, 1, 1 );
+            line.scale.set(1, 1, 1);
             line.translateX(xbase);
-            line.translateY(ytranslation);
-            longitudinal_gridlines.add(line);
+            line.translateY(-ytranslation);
+            group.add(line);
+        }
+        scene.add(group);
+        return group
+    }
+
+    function setLGLSvisiblity(x0step, group) {
+        let NLgridlines = Math.floor((x0s.length - 1) / x0step) + 1;
+        for (let i = 0; i < NLgridlines - 1; i++) {
+            group.children[i * x0step].visible = true;
+            for (let j = 1; j < x0step; j++) {
+                group.children[i * x0step + j].visible = false;
+            }
         }
     }
 
-    makeLongitudinalGridlines(base_x0step);
-
+    const lgls = [];
+    for (let i = 0; i < Nmesh; i++) {
+        let group = makeLongitudinalGridlines(1, i, new THREE.Group());
+        group.visible = false;
+        setLGLSvisiblity(base_y0step, group);
+        lgls.push(group);
+    }
+    var current_lgls = lgls[start_idx];
+    current_lgls.visible = true;
     //#endregion
 
     //#endregion
-    
+
     //#region Borders
 
     const borders = new THREE.Group();
     scene.add(borders);
 
     const border_points_front = [];
-    border_points_front.push( xmin, ytranslation, 0.0 );
-    border_points_front.push( xmax, ytranslation, 0.0 );
+    border_points_front.push(xmin, -ytranslation, 0.0);
+    border_points_front.push(xmax, -ytranslation, 0.0);
 
     const border_points_left = [];
-    border_points_left.push( xmin, ytranslation, 0.0 );
-    border_points_left.push( xmin, ytranslation + (ymax-ymin), 0.0 );
-    
+    border_points_left.push(xmin, -ytranslation, 0.0);
+    border_points_left.push(xmin, -ytranslation + (ymax - ymin), 0.0);
+
     const border_line_front_geo = new LineGeometry();
-    border_line_front_geo.setPositions( border_points_front);
+    border_line_front_geo.setPositions(border_points_front);
 
     const border_line_left_geo = new LineGeometry();
-    border_line_left_geo.setPositions( border_points_left);
-    
-    let border_line_material = new LineMaterial( {
+    border_line_left_geo.setPositions(border_points_left);
+
+    let border_line_material = new LineMaterial({
         // color: new THREE.Color().setRGB (0.20784313725490197, 0.5176470588235295, 0.8941176470588236),
         color: 'silver',
         linewidth: 1.5, // in pixels
         dashed: false
-    } );
-    
-    const border_line_front = new Line2( border_line_front_geo, border_line_material );
+    });
+
+    const border_line_front = new Line2(border_line_front_geo, border_line_material);
     border_line_front.computeLineDistances();
-    border_line_front.scale.set( 1, 1, 1 );
-    borders.add( border_line_front );
+    border_line_front.scale.set(1, 1, 1);
+    borders.add(border_line_front);
 
     const border_line_back = border_line_front.clone();
     border_line_back.computeLineDistances();
-    border_line_back.scale.set( 1, 1, 1 );
-    border_line_back.translateY(ymax-ymin);
-    borders.add( border_line_back);
+    border_line_back.scale.set(1, 1, 1);
+    border_line_back.translateY(ymax - ymin);
+    borders.add(border_line_back);
 
-    const border_line_left = new Line2( border_line_left_geo, border_line_material );
+    const border_line_left = new Line2(border_line_left_geo, border_line_material);
     border_line_left.computeLineDistances();
-    border_line_left.scale.set( 1, 1, 1 );
-    borders.add( border_line_left );
+    border_line_left.scale.set(1, 1, 1);
+    borders.add(border_line_left);
 
     const border_line_right = border_line_left.clone();
     border_line_right.computeLineDistances();
-    border_line_right.scale.set( 1, 1, 1 );
-    border_line_right.translateX(xmax-xmin);
-    borders.add( border_line_right );
-    
+    border_line_right.scale.set(1, 1, 1);
+    border_line_right.translateX(xmax - xmin);
+    borders.add(border_line_right);
+
     //#endregion
 
     //#region Interface Lines 
@@ -696,233 +765,281 @@ function render({ model, el }) {
     scene.add(interface_lines);
 
     const interface_points = [];
-    interface_points.push( Rhos[1], ytranslation, 0.0 );
-    interface_points.push( Rhos[1], ymax-ymin+ ytranslation, 0.0 );
-    
+    interface_points.push(Rhos[1], -ytranslation, 0.0);
+    interface_points.push(Rhos[1], ywidth - ytranslation, 0.0);
+
     const interface_line_geo = new LineGeometry();
-    interface_line_geo.setPositions( interface_points);
-    
-    let interface_line_material = new LineMaterial( {
-    
+    interface_line_geo.setPositions(interface_points);
+
+    let interface_line_material = new LineMaterial({
+
         color: new THREE.Color('silver'),
         linewidth: 1.25, // in pixels
         dashed: true,
-        dashSize:.1,
-        gapSize:.1,
-    } );
+        dashSize: .1,
+        gapSize: .1,
+    });
 
-    for (let i = 1; i < Rhos.length-1; i++) {            
-        const interface_line = new Line2( 
-            interface_line_geo, 
-            interface_line_material 
+    for (let i = 1; i < Rhos.length - 1; i++) {
+        const interface_line = new Line2(
+            interface_line_geo,
+            interface_line_material
         );
         interface_line.computeLineDistances();
-        interface_line.scale.set( 1, 1, 1 );
-        interface_line.translateX(Rhos[i]-Rhos[1]);
-        interface_lines.add( interface_line );
+        interface_line.scale.set(1, 1, 1);
+        interface_line.translateX(Rhos[i] - Rhos[1]);
+        interface_lines.add(interface_line);
     }
 
     //#endregion
 
     //#region Input Field Line
-    
+
     const f0_points = [];
-    
-    for ( let i = 0; i < f0s.length; i ++ ) {
+
+    for (let i = 0; i < f0s.length; i++) {
         const x = x0s[i];
-        const y = ytranslation;
+        const y = -ytranslation;
         const z = f0s[i];
-        f0_points.push( x, y, z );
-    
+        f0_points.push(x, y, z);
+
     }
-    
+
     const inputline_geometry = new LineGeometry();
-    inputline_geometry.setPositions( f0_points );
-        
-    let inputline_material = new LineMaterial( {
+    inputline_geometry.setPositions(f0_points);
+
+    let inputline_material = new LineMaterial({
         // color: new THREE.Color().setRGB (0.20784313725490197, 0.5176470588235295, 0.8941176470588236),
         linewidth: 1.15,
         // dashed: false
-    } );
-    
+    });
+
     inputline_material.uniforms.scale = uniforms.scale;
     inputline_material.uniforms.time = uniforms.time;
     inputline_material.uniforms.speed = uniforms.speed;
-    
-    inputline_material.onBeforeCompile = function ( shader ) {
-    
-      shader.vertexShader = 'uniform float scale;\n' + shader.vertexShader;
-      shader.vertexShader = 'uniform float time;\n' + shader.vertexShader;
-      shader.vertexShader = 'uniform float speed;\n' + shader.vertexShader;
-      shader.vertexShader = shader.vertexShader.replace(
-        'vec4 start = modelViewMatrix * vec4( instanceStart, 1.0 );',
-        'vec4 start = modelViewMatrix * vec4( vec3(instanceStart.x,instanceStart.y, scale*cos(speed*time)*instanceStart.z), 1.0 );'
-      ).replace(
-        'vec4 end = modelViewMatrix * vec4( instanceEnd, 1.0 );',
-        'vec4 end = modelViewMatrix * vec4( vec3(instanceEnd.x,instanceEnd.y, scale*cos(speed*time)*instanceEnd.z), 1.0 );'
-      );
-    
-    inputline_material.userData.shader = shader;
-    
+
+    inputline_material.onBeforeCompile = function (shader) {
+
+        shader.vertexShader = 'uniform float scale;\n' + shader.vertexShader;
+        shader.vertexShader = 'uniform float time;\n' + shader.vertexShader;
+        shader.vertexShader = 'uniform float speed;\n' + shader.vertexShader;
+        shader.vertexShader = shader.vertexShader.replace(
+            'vec4 start = modelViewMatrix * vec4( instanceStart, 1.0 );',
+            'vec4 start = modelViewMatrix * vec4( vec3(instanceStart.x,instanceStart.y, scale*cos(speed*time)*instanceStart.z), 1.0 );'
+        ).replace(
+            'vec4 end = modelViewMatrix * vec4( instanceEnd, 1.0 );',
+            'vec4 end = modelViewMatrix * vec4( vec3(instanceEnd.x,instanceEnd.y, scale*cos(speed*time)*instanceEnd.z), 1.0 );'
+        );
+
+        inputline_material.userData.shader = shader;
+
     };
-    
-    const inputline = new Line2( inputline_geometry, inputline_material );
+
+    const inputline = new Line2(inputline_geometry, inputline_material);
     inputline.computeLineDistances();
-    inputline.scale.set( 1, 1, 1 );
-    scene.add( inputline );
+    inputline.scale.set(1, 1, 1);
+    scene.add(inputline);
 
     //#endregion
 
     //#region GUI
 
     //#region GUI: Set Up
-    
+
     const gui_container = document.createElement('div');
     gui_container.id = 'gui_container';
     gui_container.setAttribute(
-      'style',
-      'position: absolute; z-index: 2; display:block; right: 15px; top: 0px'
+        'style',
+        'position: absolute; z-index: 2; display:block; right: 15px; top: 0px'
     );
-    
+
     subcontainer.appendChild(gui_container);
 
-    const gui = new GUI({container:gui_container});
+    const gui = new GUI({ container: gui_container });
 
-    //#endregion
-
-    //#region GUI: View 
-    
-    const viewFolder = gui.addFolder('View');
-    viewFolder.open();
-    
-    const viewParams = {
-        
-      reset_controls: function(){controls.reset()},
-        
-      full_screen: function (){
-        const fullscreenElement =
-            document.fullscreenElement || document.webkitFullscreenElement;
-        if (!fullscreenElement) {
-            if (window.document.documentElement.requestFullscreen) {
-                container.requestFullscreen();
-            } else if (canvas.webkitRequestFullscreen) {
-                container.webkitRequestFullscreen();
+    const guiBaseParams = {
+        reset: function () {
+            gui.reset();
+            controls.reset();
+        },
+        full_screen: function () {
+            const fullscreenElement =
+                document.fullscreenElement || document.webkitFullscreenElement;
+            if (!fullscreenElement) {
+                if (window.document.documentElement.requestFullscreen) {
+                    container.requestFullscreen();
+                } else if (canvas.webkitRequestFullscreen) {
+                    container.webkitRequestFullscreen();
+                }
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
             }
-        } else if (document.exitFullscreen) {
-            document.exitFullscreen();
-        } else if (document.webkitExitFullscreen) {
-            document.webkitExitFullscreen();
-        }
-    }};
-    
-    viewFolder.add(viewParams, 'full_screen').name('Full Screen')
-    viewFolder.add(viewParams, 'reset_controls').name('Reset')
-    //#endregion
+        },
+    };
+    gui.add(guiBaseParams, 'full_screen').name('Full Screen')
+    gui.add(guiBaseParams, 'reset').name('Reset')
 
-    //#region GUI: Animation
-    
-    const animationFolder = gui.addFolder('Animation');
-    animationFolder.open();
-    
-    const animationParams = {
-      reset_time: function(){
-        stopwatch.reset()
-      },
-      play_pause: function(){
-        stopwatch.pause()
-      }
-      // pause: stopwatch.paused,
-    }
-    
-    animationFolder
-      .add(animationParams, 'play_pause')
-      .listen()
-      .name('Play / Pause')
-    
-    // animationFolder
-    //   .add(animationParams, 'pause')
-    //   .listen()
-    //   .name('pause')
-    //   .onChange(function(){
-    //     stopwatch.pause();
-    //     console.log(stopwatch.paused);
-    //   })
-    
-    animationFolder
-      .add(animationParams, 'reset_time')
-      .listen()
-      .name('Restart')
-    
-    animationFolder.add(mesh.material.uniforms.speed, 'value', 0.0, 10.0).name('Speed');
-    
-    animationFolder.close();
     //#endregion
 
     //#region GUI: Components
 
-    const componentsFolder = gui.addFolder('Fields');
-    componentsFolder.open();
-    const componentsParams = {
-      guided_on: true,
-      propagating_on: true,
-      evanescent_on: true,
-    };
-    
-    componentsFolder
-      .add(componentsParams, 'guided_on')
-      .name('Guided')
-      .onChange((value) =>{mesh.material.uniforms.guided_on.value = value;
-      });
+    const fieldFolder = gui.addFolder('Fields');
+    fieldFolder.open();
 
-    const radiationFolder = componentsFolder.addFolder("Radiation")
-    
-    radiationFolder
-      .add(componentsParams, 'propagating_on')
-      .name('Propagating')
-      .onChange((value) =>{mesh.material.uniforms.propagating_on.value = value;
-      });
-    
-    radiationFolder
-      .add(componentsParams, 'evanescent_on')
-      .name('Evanescent')
-      .onChange((value) =>{mesh.material.uniforms.evanescent_on.value = value;
-      });
-    
-    componentsFolder.close();
+    const componentsParams = {
+        guided_on: true,
+        propagating_on: true,
+        evanescent_on: true,
+    };
+
+    fieldFolder
+        .add(uniforms.mesh_number, 'value', 0, Nmesh - 1, 1)
+        .name('mesh index')
+        .listen()
+        .onChange((value) => {
+            if (meshParams.meshVisible) {
+                mesh.visible = false;
+            };
+            uniforms.mesh_number.value = value;
+            // uniforms.frequency.value = value;
+            // const index = argTarget(frequencies, value);
+            mesh = meshes[value];
+            if (meshParams.meshVisible) {
+                mesh.visible = true;
+            }
+            if (viewParams.gridlines_visible.value) {
+                current_lgls.visible = false;
+                current_tvgls.visible = false;
+                current_lgls = lgls[value];
+                current_tvgls = tvgls[value];
+                current_lgls.visible = true;
+                current_tvgls.visible = true;
+            }
+            else {
+                current_lgls = lgls[value];
+                current_tvgls = tvgls[value];
+                current_lgls.visible = false;
+                current_tvgls.visible = false;
+            }
+        });
+
+    const componentsFolder = fieldFolder.addFolder("Components")
+    componentsFolder
+        .add(componentsParams, 'guided_on')
+        .name('Guided')
+        .onChange((value) => {
+            mesh.material.uniforms.guided_on.value = value;
+        });
+
+    componentsFolder
+        .add(componentsParams, 'propagating_on')
+        .name('Propagating')
+        .onChange((value) => {
+            mesh.material.uniforms.propagating_on.value = value;
+        });
+
+    componentsFolder
+        .add(componentsParams, 'evanescent_on')
+        .name('Evanescent')
+        .onChange((value) => {
+            mesh.material.uniforms.evanescent_on.value = value;
+        });
+
+    // componentsFolder.close();
     //#endregion
 
-    //#region GUI: Appearence
+    //#region GUI: Camera 
 
-    const appearenceFolder = gui.addFolder('Style');
+    const viewFolder = gui.addFolder('Camera');
+    viewFolder.open();
+
+    const viewParams = {
+        starting_view: function () { controls.reset() },
+        side_view: function () { camera.position.set(D * Math.cos(alpha), 0, D * Math.sin(alpha)) },
+        overhead_view: function () { camera.position.set(0, 0, D) },
+        gridlines_visible: { value: true },
+    };
+
+    viewFolder.add(viewParams, 'starting_view').name('Front')
+    viewFolder.add(viewParams, 'side_view').name('Side')
+    viewFolder.add(viewParams, 'overhead_view').name('Overhead')
+    viewFolder.close();
+    //#endregion
+
+    //#region GUI: Animation
+
+    const animationFolder = gui.addFolder('Animation');
+    animationFolder.open();
+
+    const animationParams = {
+        reset_time: function () {
+            stopwatch.reset()
+        },
+        play_pause: function () {
+            stopwatch.pause()
+        }
+    }
+
+    animationFolder
+        .add(animationParams, 'play_pause')
+        .listen()
+        .name('Play / Pause')
+
+
+    animationFolder
+        .add(animationParams, 'reset_time')
+        .listen()
+        .name('Restart')
+
+    animationFolder.add(mesh.material.uniforms.speed, 'value', 0.0, 10.0).name('Speed');
+
+    animationFolder.close();
+    //#endregion
+    
+    //#region GUI: Style
+
+    const styleFolder = gui.addFolder('Style');
 
     //#region SUB GUI: SUB Appearence: Mesh
 
-    const meshAppearenceFolder = appearenceFolder.addFolder('Mesh');
+    const meshAppearenceFolder = styleFolder.addFolder('Mesh');
 
     meshAppearenceFolder.open();
-    
-    meshAppearenceFolder.add(mesh, 'visible');
+
+    const meshParams = {
+        meshVisible: true
+    }
+
+    meshAppearenceFolder.add(meshParams, 'meshVisible')
+        .name('visible')
+        .listen()
+        .onChange((value) => {
+            mesh.visible = value;
+        });
 
     const colormapList = {
-      'copper':'copper',
-      'viridis': 'viridis',
-      'magma': 'magma',
-      'bone':'bone',
-      'rainbow':'rainbow',
+        'copper': 'copper',
+        'viridis': 'viridis',
+        'magma': 'magma',
+        'bone': 'bone',
+        'rainbow': 'rainbow',
     }
-    
+
     const appearenceParams = {
-      colormaps: colormapList['copper'],
+        colormaps: colormapList['copper'],
     };
 
     meshAppearenceFolder.add(mesh.material.uniforms.scale, 'value', 0.0, 2.0).name('scale');
-    
+
     meshAppearenceFolder
-      .add(appearenceParams, 'colormaps', colormapList)
-      .name('colormap')
-      .onChange((value) =>{mesh.material.uniforms.vLut.value = luts[value];
-      });
-    
+        .add(appearenceParams, 'colormaps', colormapList)
+        .name('colormap')
+        .onChange((value) => {
+            mesh.material.uniforms.vLut.value = luts[value];
+        });
+
     meshAppearenceFolder.add(mesh.material.uniforms.colorscale, 'value', 0.04, 2.0).name('colorscale');
 
     // meshAppearenceFolder.close();
@@ -930,7 +1047,7 @@ function render({ model, el }) {
     //#endregion
 
     //#region SUB GUI: SUB Appearence: Lines
-    const lineAppearenceFolder = appearenceFolder.addFolder('Lines');
+    const lineAppearenceFolder = styleFolder.addFolder('Lines');
 
     //#region SUB GUI: SUB Appearence: SUB Lines: Axes
 
@@ -943,100 +1060,114 @@ function render({ model, el }) {
     //#endregion
 
     //#region SUB GUI: SUB Appearence: SUB Lines: Border
-    
+
     const borderAppearenceFolder = lineAppearenceFolder.addFolder('Border');
     borderAppearenceFolder.open();
-    
+
     borderAppearenceFolder.add(borders, 'visible').name('visible');
 
     const silver = new THREE.Color('silver');
 
     const border_params = {
-    width: .7,
-    color: [silver.r, silver.g, silver.b],
-};
-    borderAppearenceFolder.add( border_params, 'width', .01, 5 )
-    .onChange( function ( val ) {
-        border_line_material.linewidth = val;
-    } );    
+        width: .7,
+        color: [silver.r, silver.g, silver.b],
+    };
+    borderAppearenceFolder.add(border_params, 'width', .01, 5)
+        .onChange(function (val) {
+            border_line_material.linewidth = val;
+        });
 
     borderAppearenceFolder
-      .addColor( border_params, 'color')
-      .name('color')
-      .onChange(function (value) {
-        const color = new THREE.Color().setRGB(value[0], value[1], value[2]);
-        border_line_material.color = color;
-    });
+        .addColor(border_params, 'color')
+        .name('color')
+        .onChange(function (value) {
+            const color = new THREE.Color().setRGB(value[0], value[1], value[2]);
+            border_line_material.color = color;
+        });
 
     borderAppearenceFolder.close();
 
     //#endregion
-    
+
     //#region SUB GUI: SUB Appearence: SUB Lines: Grid
-    
+
     const gridAppearenceFolder = lineAppearenceFolder.addFolder('Grid');
     gridAppearenceFolder.open();
-        
-    gridAppearenceFolder.add(gridlines, 'visible').name('visible');
+
+    gridAppearenceFolder.add(viewParams.gridlines_visible, 'value')
+        .name('visible')
+        .onChange((value) => {
+            current_lgls.visible = value;
+            current_tvgls.visible = value;
+        });
 
     const grid_params = {
-    'line width': .7,
-    'x step': base_x0step,
-    'y step': base_y0step,
-};
-    gridAppearenceFolder.add( grid_params, 'line width', .01, 10 )
-    .onChange( function ( val ) {
-    gridline_material.linewidth = val;
-} );
+        'line width': .7,
+        'x step': base_x0step,
+        'y step': base_y0step,
+    };
+    gridAppearenceFolder.add(grid_params, 'line width', .01, 10)
+        .onChange(function (val) {
+            gridline_material.linewidth = val;
+        });
     gridAppearenceFolder.add(gridline_material.uniforms.gridlinescale, 'value', .01, 1).name('shade')
 
-    gridAppearenceFolder.add( grid_params, 'x step', 1, 20)
-    .step(1)
-    .onChange( (val) => {
-        longitudinal_gridlines.clear();
-        makeLongitudinalGridlines(val);
-    });
+    gridAppearenceFolder.add(grid_params, 'x step', 1, 20)
+        .step(1)
+        .onChange((val) => {
+            // longitudinal_gridlines.clear();
+            // makeLongitudinalGridlines(val, uniforms.mesh_number.value );
+            gridline_material.uniforms.x0step.value = val;
+            for (let i = 0; i < lgls.length; i++) {
+                let group = lgls[i];
+                setLGLSvisiblity(val, group);
+            }
+        });
 
-    gridAppearenceFolder.add( grid_params, 'y step', 1, 20)
-    .step(1)
-    .onChange( (val) => {
-        transverse_gridlines.clear();
-        makeTransvereGridlines(val);
-    });
-
+    gridAppearenceFolder.add(grid_params, 'y step', 1, 20)
+        .step(1)
+        .onChange((val) => {
+            // transverse_gridlines.clear();
+            // makeTransvereGridlines(val, uniforms.mesh_number.value );
+            gridline_material.uniforms.y0step.value = val;
+            for (let i = 0; i < tvgls.length; i++) {
+                let group = tvgls[i];
+                setTVGLSvisiblity(val, group);
+            }
+        });
 
     gridAppearenceFolder.close();
 
     //#endregion
-    
+
     //#region SUB GUI: SUB Appearence: SUB Lines: Input
-    
+
     const inputFieldFolder = lineAppearenceFolder.addFolder('Input');
     inputFieldFolder.open();
 
     inputFieldFolder.add(inputline, 'visible').name('visible');
 
     const inputFieldParams = {
-      width: 1.15,
-      color: [silver.r, silver.g, silver.b],
+        width: 1.15,
+        color: [silver.r, silver.g, silver.b],
     };
-    
+
     inputFieldFolder
-      .add( inputFieldParams, 'width', 0, 5 )
-      .name('width')
-      .onChange( function ( value ) {
-    
-      inputline_material.linewidth = value;
-    
-    } );
-    
+        .add(inputFieldParams, 'width', 0, 5)
+        .name('width')
+        .onChange(function (value) {
+
+            inputline_material.linewidth = value;
+
+        });
+
     inputFieldFolder
-      .addColor( inputFieldParams, 'color')
-      .name('color')
-      .onChange(function (value) {
-        const color = new THREE.Color().setRGB(value[0], value[1], value[2]);
-        inputline_material.color = color;
-    });
+        .addColor(inputFieldParams, 'color')
+        .name('color')
+        .onChange(function (value) {
+            const color = new THREE.Color().setRGB(value[0], value[1], value[2]);
+            inputline_material.color = color;
+        });
 
     inputFieldFolder.close();
 
@@ -1046,25 +1177,25 @@ function render({ model, el }) {
 
     const interfaceAppearenceFolder = lineAppearenceFolder.addFolder('Interfaces');
     interfaceAppearenceFolder.open();
-    
+
     interfaceAppearenceFolder.add(interface_lines, 'visible').name('visible');
 
     const interface_params = {
-    width: .7,
-    color: [silver.r, silver.g, silver.b],
-};
-    interfaceAppearenceFolder.add( interface_params, 'width', .1, 4 )
-    .onChange( function ( val ) {
-        interface_line_material.linewidth = val;
-    } );    
+        width: .7,
+        color: [silver.r, silver.g, silver.b],
+    };
+    interfaceAppearenceFolder.add(interface_params, 'width', .1, 4)
+        .onChange(function (val) {
+            interface_line_material.linewidth = val;
+        });
 
     interfaceAppearenceFolder
-      .addColor( interface_params, 'color')
-      .name('color')
-      .onChange(function (value) {
-        const color = new THREE.Color().setRGB(value[0], value[1], value[2]);
-        interface_line_material.color = color;
-    });
+        .addColor(interface_params, 'color')
+        .name('color')
+        .onChange(function (value) {
+            const color = new THREE.Color().setRGB(value[0], value[1], value[2]);
+            interface_line_material.color = color;
+        });
 
     interfaceAppearenceFolder.add(interface_line_material, 'dashed');
     interfaceAppearenceFolder.add(interface_line_material, 'dashSize', .05, 1.5);
@@ -1078,7 +1209,7 @@ function render({ model, el }) {
 
     //#endregion
 
-    // appearenceFolder.close();
+    styleFolder.close();
 
     //#endregion
 
@@ -1087,59 +1218,60 @@ function render({ model, el }) {
     //#endregion
 
     //#region Events
-    window.addEventListener( 'resize', ()=> {
+    window.addEventListener('resize', () => {
         camera.aspect = container.clientWidth / container.clientHeight;
+
         camera.updateProjectionMatrix();
-        renderer.setSize( container.clientWidth, container.clientHeight );
-    } );
-    
-    renderer.domElement.addEventListener( 'click', onMouseClick);
-    renderer.domElement.addEventListener( 'mousemove', onMouseMove);
-    renderer.domElement.addEventListener( 'mousedown', onMouseDown);
-    renderer.domElement.addEventListener( 'mouseup', onMouseUp);
+        renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+
+    renderer.domElement.addEventListener('click', onMouseClick);
+    renderer.domElement.addEventListener('mousemove', onMouseMove);
+    renderer.domElement.addEventListener('mousedown', onMouseDown);
+    renderer.domElement.addEventListener('mouseup', onMouseUp);
 
     var mousedown = false;
     var mouseup = true;
     var dragging = false;
-    
-    function onMouseClick(){
-      if(!dragging){
-        stopwatch.pause();
-      }
+
+    function onMouseClick() {
+        if (!dragging) {
+            stopwatch.pause();
+        }
     }
-    
-    function onMouseMove(){
-      if(mousedown){dragging=true}
-      else{dragging=false}
+
+    function onMouseMove() {
+        if (mousedown) { dragging = true }
+        else { dragging = false }
     }
-    
-    function onMouseDown(){
-      mousedown = true;
-      mouseup = false;
+
+    function onMouseDown() {
+        mousedown = true;
+        mouseup = false;
     }
-    
-    function onMouseUp(){
-      mousedown = false;
-      mouseup = true;
+
+    function onMouseUp() {
+        mousedown = false;
+        mouseup = true;
     }
-    
+
     // const onresize = (dom_elem, callback) => {
     //   const resizeObserver = new ResizeObserver(() => callback() );
     //   resizeObserver.observe(dom_elem);
     // };
-    
+
     // function onDivResize() {
     //     camera.aspect = subcontainer.clientWidth / subcontainer.clientHeight;
     //     camera.updateProjectionMatrix();
-    
+
     //     renderer.setSize( subcontainer.clientWidth, subcontainer.clientHeight );}
-    
-    
+
+
     // onresize(subcontainer, onDivResize);
     //#endregion
-    
-    //#region Animate/Render
-    
+
+    // #region Animate/Render
+
     var requestID;
     // renderer.render(scene, camera);
 
@@ -1147,11 +1279,18 @@ function render({ model, el }) {
         controls.update();
         stopwatch.run();
         uniforms.time.value = stopwatch.time;
+
+        // Mod stopwatch time to decrease computational load
+        if (stopwatch.paused != true) {
+            if (stopwatch.time > 2 * Math.PI / uniforms.speed.value) {
+                stopwatch.reset();
+            }
+        }
         uniforms.update;
         renderer.render(scene, camera);
         requestID = requestAnimationFrame(animate);
     }
-    
+
     animate();
     //#endregion
 }

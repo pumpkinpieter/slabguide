@@ -107,12 +107,13 @@ when providing input field f0.")
             self.f0 = f0
             self.Lx, self.Rx = window[0], window[1]
 
-            def func(C_lambda, sign=1, Coeffs=None):
+            def func(C_lambda, sign=1, Coeffs=None, base_Zis=None):
 
                 return self.radiation_transform(
                     C_lambda,
                     sign=sign,
                     Coeffs=Coeffs,
+                    base_Zis=base_Zis,
                     **integration_args,
                 )
 
@@ -453,7 +454,11 @@ when providing input field f0.")
                 return
 
         Cs = contour['Cs']
-
+        
+        # Precompute Zi_from_Z0 for all regions
+        base_Zis = self.Slab.Zi_from_Z0(Cs, self.Slab.ns)
+        contour['base_Zis'] = base_Zis
+        
         # Add data to contour
         if self.compute_class_I:
 
@@ -461,13 +466,15 @@ when providing input field f0.")
             Coeffs = self.Slab.coefficients(Cs, mode_type='radiation',
                                             field_type=self.field_type,
                                             Normalizer=self.Normalizer,
-                                            plane=self.plane, sign=1)
+                                            plane=self.plane, sign=1,
+                                            base_Zis=base_Zis)
             # Add Coeffs to contour dictionary for later use in vectorized 
             # quadrature routines
             contour['Coeffs_I'] = Coeffs
             
             # Get class I radiation transform of input field
-            contour['alphas_I'] = self.transform(Cs, sign=1, Coeffs=Coeffs)
+            contour['alphas_I'] = self.transform(Cs, sign=1, Coeffs=Coeffs,
+                                                 base_Zis=base_Zis)
             
             
             # # Get class I radiation mode fields
@@ -487,14 +494,16 @@ when providing input field f0.")
             Coeffs = self.Slab.coefficients(Cs, mode_type='radiation',
                                             field_type=self.field_type,
                                             Normalizer=self.Normalizer,
-                                            plane=self.plane, sign=-1)
+                                            plane=self.plane, sign=-1,
+                                            base_Zis=base_Zis)
             
             # Add Coeffs to contour dictionary for later use in vectorized 
             # quadrature routines
             contour['Coeffs_II'] = Coeffs
             
             # Get class II radiation transform of input field
-            contour['alphas_II'] = self.transform(Cs, sign=-1, Coeffs=Coeffs)
+            contour['alphas_II'] = self.transform(Cs, sign=-1, Coeffs=Coeffs,
+                                                  base_Zis=base_Zis)
 
             # # Get class II radiation mode fields
             # F_II = []
@@ -571,6 +580,7 @@ when providing input field f0.")
         Cs,
         sign=1,
         Coeffs=None,
+        base_Zis=None,
         **intargs,
     ):
         """
@@ -578,7 +588,7 @@ when providing input field f0.")
         Cs using scipy vectorized integration techniques.
         """
 
-        def integrand(x, C, sign=sign, Coeffs=Coeffs):
+        def integrand(x, C, sign=sign, Coeffs=Coeffs, base_Zis=base_Zis):
             return self.f0(x) * self.Slab.vectorized_fields(
                 C,
                 x,
@@ -588,24 +598,26 @@ when providing input field f0.")
                 plane=self.plane,
                 sign=sign,
                 Coeffs=Coeffs,
+                base_Zis=base_Zis,
             )
 
         return quad_vec(
-            integrand, self.Lx, self.Rx, args=(Cs, sign, Coeffs), **intargs
-        )[0]
+            integrand, self.Lx, self.Rx, args=(Cs, sign, Coeffs, base_Zis), 
+            **intargs)[0]
 
     def quadrature(
         self,
         xs,
         zs,
         contour,
-        method='simpson',
+        method='simpsons',
         compute_class='I',
     ):
         if compute_class not in ['I', 'II']:
             raise ValueError("Compute class must be 'I' or 'II'. ")
             
         Cs, dCdS, Ss = contour['Cs'], contour['dCdS'], contour['Ss']
+        base_Zis = contour['base_Zis']
         
         if compute_class == 'I':
             alphas = contour['alphas_I']
@@ -631,7 +643,8 @@ when providing input field f0.")
             # )
             fdata = self.Slab.vectorized_fields(Cs[:-1], xs, zs, 
                                                 Coeffs=Coeffs[:-1],
-                                                reduce_dim=False)
+                                                reduce_dim=False,
+                                                base_Zis=base_Zis[:-1])
             ys = np.sum(alphas[:-1] * fdata * dCdS[:-1] * dS, axis=0) 
 
         elif method == "right_endpoint":
@@ -646,7 +659,8 @@ when providing input field f0.")
             # )
             fdata = self.Slab.vectorized_fields(Cs[1:], xs, zs, 
                                                 Coeffs=Coeffs[1:],
-                                                reduce_dim=False)
+                                                reduce_dim=False,
+                                                base_Zis=base_Zis[1:])
             ys = np.sum(alphas[1:] * fdata * dCdS[1:] * dS, axis=0) 
             
         elif method == "trapezoid":
@@ -664,7 +678,8 @@ when providing input field f0.")
             # ys *= 1 / 2
             fdata = self.Slab.vectorized_fields(Cs, xs, zs, 
                                                 Coeffs=Coeffs,
-                                                reduce_dim=False)
+                                                reduce_dim=False,
+                                                base_Zis=base_Zis)
             ys = alphas[0] * fdata[0] * dCdS[0] * dS[0]
             middS = dS[1:] + dS[:-1]
             ys += np.sum(alphas[1:-1] * fdata[1:-1] * dCdS[1:-1] * middS, 
@@ -703,7 +718,8 @@ spaced spaced intervals.")
             # ys *= 1 / 3 * dS
             fdata = self.Slab.vectorized_fields(Cs, xs, zs, 
                                                 Coeffs=Coeffs,
-                                                reduce_dim=False)
+                                                reduce_dim=False,
+                                                base_Zis=base_Zis)
             odds = slice(1, -1, 2)
             evens = slice(2, -2, 2)
             ys = alphas[0] * fdata[0] * dCdS[0]

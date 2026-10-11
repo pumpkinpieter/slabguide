@@ -329,12 +329,63 @@ class ThreeJSMeshSaver():
         base_vertices = Base.transpose(1, 2, 0).reshape((self.L, 3))
         return base_vertices
 
+    def create_height_array(self, ys, part='real'):
+        '''Get data for height from complex ys input (needs to be formatted as:
+            [ys[0].part, ys[1].part, ... ].'''
+        if part == 'real':
+            data = ys.real
+        elif part == 'imag':
+            data = ys.imag
+        else:
+            raise ValueError('Part must be real or imag.')
+        if len(ys.shape) == 2:
+            L = 1
+        elif len(ys.shape) == 3:
+            L = ys.shape[0]
+        else:
+            raise ValueError('ys must have dimension 2 or 3')
+        heights = data.T.reshape((ys.shape[-2] * ys.shape[-1], L))
+        return heights
+
     def create_height_array_from_complex(self, heights):
         '''Get data for height from complex ys input (needs to be formatted as
         list: [ys[0].real, ys[0].imag, ys[1].real, ys[1].imag, ... ].'''
         Heights = np.array([heights.real, heights.imag], dtype=np.float32)
-        heights = Heights.transpose(1, 2, 0).reshape((self.L, 2))
+        result = Heights.transpose(1, 2, 0).reshape((self.L, 2))
+        return result
+    
+    def create_height_array_multi_mesh(self, ys, part='real'):
+        '''Create array of data for multiple meshes at once. '''
+        if part == 'real':
+            data = np.array(ys.real,  dtype=np.float32)
+        elif part == 'imag':
+            data = np.array(ys.imag,  dtype=np.float32)
+        else:
+            raise ValueError('Part must be real or imag.')
+        if len(ys.shape) == 2:
+            Nmesh = 1
+        elif len(ys.shape) == 3:
+            Nmesh = ys.shape[0]
+        else:
+            raise ValueError('ys must have dimension 2 or 3')
+        heights = data.transpose(0,2,1).reshape((Nmesh, ys.shape[-2] * ys.shape[-1]))
         return heights
+
+    def create_height_array_multi_mesh_complex(self, ys):
+        '''Same as create_height_array_mulit_mesh but now saves into shape (Nm, 2*L) where
+        L = Nx * Nz, so that we can save all of complex number at once not just real or imag
+        part.'''
+        if len(ys.shape) == 2:
+            Nmesh = 1
+        elif len(ys.shape) == 3:
+            Nmesh = ys.shape[0]
+        else:
+            raise ValueError('ys must have dimension 2 or 3')
+
+        Ngridpoints = ys.shape[-2] * ys.shape[-1]
+        data = np.array([ys.real, ys.imag], dtype=np.float32)
+        result = data.transpose(1, 2, 3, 0).reshape((Nmesh, Ngridpoints * 2))
+        return np.squeeze(result)
 
     def save_as_json(self, filepath, array):
         with open(filepath + '.json', 'w') as outfile:

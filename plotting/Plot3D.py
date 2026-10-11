@@ -13,10 +13,10 @@ from IPython.display import display
 from ..utilities import ThreeJSMeshSaver
 from time import time
 
-def Plot3D(P, xs=None, ys=None, ymin=0, ymax=15, yref=450, xstride=6, 
+def Plot3D(*Ps, xs=None, ys=None, ymin=0, ymax=15, yref=450, xstride=6, 
            time_check=False):
     if xs is None:
-        xs = P.Slab.all_Xs[::xstride]
+        xs = Ps[0].Slab.all_Xs[::xstride]
     if ys is None:
         ys = np.linspace(ymin, ymax, yref)
         
@@ -49,10 +49,11 @@ def Plot3D(P, xs=None, ys=None, ymin=0, ymax=15, yref=450, xstride=6,
         print('Applying Propagator to xs and ys.\n')
         a = time()
 
-    gs = P.Guided(xs, ys)
-    ps = P.Propagating(xs, ys)
-    evs = P.Evanescent(xs, ys)
-    f0s = np.array(P.f0(xs), dtype=np.float32)
+    gs = np.array([P.Guided(xs,ys) for P in Ps])
+    ps = np.array([P.Propagating(xs, ys) for P in Ps])
+    evs = np.array([P.Evanescent(xs, ys) for P in Ps])
+    f0s = np.array(Ps[0].f0(xs), dtype=np.float32)
+    Nmesh = np.array(len(Ps), dtype=np.uint32)
 
     if time_check:
         b = time()
@@ -62,15 +63,15 @@ def Plot3D(P, xs=None, ys=None, ymin=0, ymax=15, yref=450, xstride=6,
         print('Creating height arrays from data.\n')
         a = time()
 
-    guided = MS.create_height_array_from_complex(gs)
-    propagating = MS.create_height_array_from_complex(ps)
-    evanescent = MS.create_height_array_from_complex(evs)
+    guided = MS.create_height_array_multi_mesh_complex(gs)
+    propagating = MS.create_height_array_multi_mesh_complex(ps)
+    evanescent = MS.create_height_array_multi_mesh_complex(evs)
 
     if time_check:
         b = time()
         print("Time taken : %.4f.\n"%(b-a))
 
-    Rhos = np.array(P.Slab.Rhos, dtype=np.float32)
+    Rhos = np.array(Ps[0].Slab.Rhos, dtype=np.float32)
     
     class HelloWidget(anywidget.AnyWidget):
         _esm = Path(__file__).parent / "widget.js"
@@ -86,6 +87,7 @@ def Plot3D(P, xs=None, ys=None, ymin=0, ymax=15, yref=450, xstride=6,
         _prop_bytes = traitlets.Bytes(propagating.tobytes()).tag(sync=True)
         _ev_bytes = traitlets.Bytes(evanescent.tobytes()).tag(sync=True)
         _rho_bytes = traitlets.Bytes(Rhos.tobytes()).tag(sync=True)
+        _Nmesh = traitlets.Bytes(Nmesh.tobytes()).tag(sync=True)
 
     if time_check:
         print('Instantiating widget.\n')

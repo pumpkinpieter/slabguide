@@ -20,7 +20,7 @@ class PaperMethod:
 
         self.plane = plane
 
-    def normalization(self, C, sign=1):
+    def normalization(self, C, sign=1, base_Zis=None):
 
         try:
             len(C)
@@ -35,6 +35,7 @@ class PaperMethod:
             plane=self.plane,
             Ztype_far_left="standard",
             Ztype_far_right="standard",
+            base_Zis=base_Zis,
         )
 
         r1 = -M[..., 1, 0] / M[..., 1, 1]
@@ -55,7 +56,7 @@ class PaperMethod:
 
         return M0
 
-    def pole_locations(self, C, sign=1):
+    def pole_locations(self, C, sign=1, base_Zis=None):
 
         M = self.Slab.transmission_matrix(
             C,
@@ -63,6 +64,7 @@ class PaperMethod:
             plane=self.plane,
             Ztype_far_left="standard",
             Ztype_far_right="standard",
+            base_Zis=base_Zis,
         )
 
         detM = self.Slab.transmission_determinant(
@@ -95,7 +97,7 @@ class OurMethod:
 
         self.plane = plane
 
-    def normalization(self, C, sign=1):
+    def normalization(self, C, sign=1, base_Zis=None):
 
         try:
             len(C)
@@ -118,6 +120,7 @@ class OurMethod:
             plane=self.plane,
             Ztype_far_left="standard",
             Ztype_far_right="standard",
+            base_Zis=base_Zis,
         )
 
         detM = self.Slab.transmission_determinant(
@@ -142,7 +145,7 @@ class OurMethod:
 
         return M0
 
-    def pole_locations(self, C, sign=1):
+    def pole_locations(self, C, sign=1, base_Zis=None):
 
         if len(self.Slab.ns) == 1:
             return np.ones_like(C)
@@ -153,6 +156,7 @@ class OurMethod:
             plane=self.plane,
             Ztype_far_left="standard",
             Ztype_far_right="standard",
+            base_Zis=base_Zis,
         )
 
         detM = self.Slab.transmission_determinant(
@@ -182,7 +186,7 @@ class EigvecMethod:
 
         self.plane = plane
 
-    def normalization(self, C, sign=1):
+    def normalization(self, C, sign=1, base_Zis=None):
 
         sign = int(sign)
 
@@ -202,6 +206,7 @@ class EigvecMethod:
             plane=self.plane,
             Ztype_far_left="standard",
             Ztype_far_right="standard",
+            base_Zis=base_Zis,
         )
 
         trQs = (
@@ -229,7 +234,7 @@ class EigvecMethod:
 
         return M0
 
-    def pole_locations(self, C, sign=1):
+    def pole_locations(self, C, sign=1, base_Zis=None):
 
         M = self.Slab.transmission_matrix(
             C,
@@ -237,6 +242,7 @@ class EigvecMethod:
             plane=self.plane,
             Ztype_far_left="standard",
             Ztype_far_right="standard",
+            base_Zis=base_Zis,
         )
 
         return -4 * M[..., 1, 1] * M[..., 0, 0]
