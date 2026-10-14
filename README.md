@@ -1,4 +1,4 @@
-# slab
+# slabguide
 
 Calculates the fields in step-index slab waveguides with arbitrary numbers of layers.
 
