@@ -371,7 +371,7 @@ class ThreeJSMeshSaver():
         heights = data.transpose(0,2,1).reshape((Nmesh, ys.shape[-2] * ys.shape[-1]))
         return heights
 
-    def create_height_array_multi_mesh_complex(self, ys):
+    def create_height_array_multi_mesh_complex(self, ys, reduce_dims=True):
         '''Same as create_height_array_mulit_mesh but now saves into shape (Nm, 2*L) where
         L = Nx * Nz, so that we can save all of complex number at once not just real or imag
         part.'''
@@ -385,7 +385,9 @@ class ThreeJSMeshSaver():
         Ngridpoints = ys.shape[-2] * ys.shape[-1]
         data = np.array([ys.real, ys.imag], dtype=np.float32)
         result = data.transpose(1, 2, 3, 0).reshape((Nmesh, Ngridpoints * 2))
-        return np.squeeze(result)
+        if reduce_dims:
+            result = np.squeeze(result)
+        return result
 
     def save_as_json(self, filepath, array):
         with open(filepath + '.json', 'w') as outfile:
@@ -406,3 +408,11 @@ class ThreeJSMeshSaver():
         with open(filepath + '.json', 'w') as outfile:
             json.dump(vals.tolist(), outfile, separators=(',', ':'),
                       sort_keys=True, indent=4)
+            
+    def save_heights_as_json_not_flat_complex(self, filepath, ys,
+                                              reduce_dims=True):
+        rd = reduce_dims
+        heights= self.create_height_array_multi_mesh_complex(ys,reduce_dims=rd)
+        with open(filepath + '.json', 'w') as outfile:
+            json.dump(heights.tolist(), outfile, separators=(',', ':'),
+                      sort_keys=True, indent=4)  

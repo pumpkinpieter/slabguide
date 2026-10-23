@@ -593,6 +593,7 @@ def plot_field_2d_surface(
     zmin=0,
     zmax=7,
     zref=120,
+    t=0,
     part="real",
     product_func=True,
     show_axis=False,
@@ -602,8 +603,10 @@ def plot_field_2d_surface(
     elev=45,
     roll=0,
     zoom=2,
-    zstride=2,
     xstride=10,
+    zstride=2,
+    vmin=None,
+    vmax=None,
     z_lim_factor=1,
     colorbar=False,
     pad=0.15,
@@ -632,11 +635,23 @@ def plot_field_2d_surface(
 
     Xs, Zs = np.meshgrid(xs, zs)
 
-    if product_func:
-        fs = F(xs, zs, **fkwargs)
+    if callable(F):
+        if product_func:
+            fs = F(xs, zs, **fkwargs) * np.exp(-1j * t)
+        else:
+            fs = F(Xs, Zs, **fkwargs)* np.exp(-1j * t)
+            
+    elif type(F) == np.ndarray:
+        if F.shape != (len(zs), len(xs)):
+            raise ValueError("Function data provided does not have correct \
+shape.  Provided shape: (%i, %i), Required shape: (%i, %i)" 
+%(F.shape[0], F.shape[1], len(zs), len(xs)))
+        fs = F * np.exp(-1j * t)
+        
     else:
-        fs = F(Xs, Zs, **fkwargs)
-
+        raise ValueError("Type of object to plot must be callable function or \
+np.ndarray.  Provided object has type: " + str(type(F)))
+    
     if part == "real":
         ys = fs.real
     elif part == "imag":
@@ -646,12 +661,21 @@ def plot_field_2d_surface(
     else:
         raise ValueError("Part must be real, imag or norm.")
 
+    if vmin is None:
+        vmin = np.min(ys)
+    if vmax is None:
+        vmax = np.max(ys)
+        
     axmap = ax.plot_surface(
         Xs,
         Zs,
         ys,
         clip_on=False,
         cmap=cmap,
+        rstride=1,
+        cstride=1,
+        vmin=vmin,
+        vmax=vmax,
         **surfaceargs,
     )
     # lims = (np.ptp(Xs), np.ptp(Zs), min(np.ptp(Xs), np.ptp(Zs)))
@@ -688,11 +712,14 @@ def add_2d_plot_surface(
     zmin=0,
     zmax=5,
     zref=100,
+    t=0,
     part="real",
     product_func=True,
     cmap="viridis",
-    zstride=2,
     xstride=10,
+    zstride=2,
+    vmin=None,
+    vmax=None,
     **surfaceargs,
 ):
     """Add 3d surface plot of function F to axis."""
@@ -713,11 +740,23 @@ def add_2d_plot_surface(
     
     Xs, Zs = np.meshgrid(xs, zs)
 
-    if product_func:
-        fs = F(xs, zs, **fkwargs)
+    if callable(F):
+        if product_func:
+            fs = F(xs, zs, **fkwargs) * np.exp(-1j * t)
+        else:
+            fs = F(Xs, Zs, **fkwargs)* np.exp(-1j * t)
+            
+    elif type(F) == np.ndarray:
+        if F.shape != (len(zs), len(xs)):
+            raise ValueError("Function data provided does not have correct \
+shape.  Provided shape: (%i, %i), Required shape: (%i, %i)" 
+%(F.shape[0], F.shape[1], len(zs), len(xs)))
+        fs = F * np.exp(-1j * t)
+        
     else:
-        fs = F(Xs, Zs, **fkwargs)
-
+        raise ValueError("Type of object to plot must be callable function or \
+np.ndarray.  Provided object has type: " + str(type(F)))
+    
     if part == "real":
         ys = fs.real
     elif part == "imag":
@@ -727,12 +766,21 @@ def add_2d_plot_surface(
     else:
         raise ValueError("Part must be real, imag or norm.")
 
+    if vmin is None:
+        vmin = np.min(ys)
+    if vmax is None:
+        vmax = np.max(ys)
+        
     ax.plot_surface(
         Xs,
         Zs,
         ys,
         clip_on=False,
         cmap=cmap,
+        rstride=1,
+        cstride=1,
+        vmin=vmin,
+        vmax=vmax,
         **surfaceargs,
     )
     # return ax
