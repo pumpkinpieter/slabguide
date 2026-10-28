@@ -12,8 +12,8 @@ Below we see an input field, propagating in a vacuum, arriving at the endface of
 
 <div style="text-align: center;">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./images/3d_input_field_dark.png"/>
-  <img alt="desc" src="./images/3d_input_field_solarize.png"/>
+  <source media="(prefers-color-scheme: dark)" srcset="./images/3_layer_guide/3d_input_field_dark.png"/>
+  <img alt="description" src="./images/3_layer_guide/3d_input_field.png"/>
 </picture>
 </div>
 
@@ -21,7 +21,7 @@ The slab package calculates the resultant field inside the guide:
 
 <div style="text-align: center;">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./images/3d_resultant_field_dark.png"/>
+  <source media="(prefers-color-scheme: dark)" srcset="./images/3_layer_guide/3d_resultant_field_dark.png"/>
   <img alt="desc" src="./images/3d_resultant_field_solarize.png"/>
 </picture>
 </div>
